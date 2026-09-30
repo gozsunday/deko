@@ -109,4 +109,4 @@ semantic-release on push to `main` (also `beta` prerelease branch). Generates `C
 
 - Both `.git/` and `.jj/` present (Jujutsu VCS used alongside git)
 - **No tests** — no test framework, no test files anywhere in the repo
-- TS 6.0.3, Bun 1.3.13, `bunfig.toml` uses `linker = "isolated"`
+- TS 6.0.3, Bun 1.3.14, `bunfig.toml` uses `linker = "isolated"`
