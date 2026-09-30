@@ -5,13 +5,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouterState } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useState } from "react";
 
 import { PeriodSelector } from "@/components/layout/period-selector";
 import {
@@ -29,12 +23,12 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useApiFailure } from "@/hooks/use-api-failure";
 import { cn } from "@/lib/utils";
 import {
   $getSingleService,
   singleServiceQueryOptions,
 } from "@/server/services";
-import { useDialogStore } from "@/stores/dialog-store";
 import { useNavigationStore } from "@/stores/navigation-store";
 
 const PAGE_SEGMENT_TITLES: Record<string, string> = {
@@ -55,53 +49,9 @@ export function AppHeader() {
 
   const [isCoolingDown, setIsCoolingDown] = useState(false);
   const isNavigating = useNavigationStore((s) => s.isNavigating);
-  const activeDialog = useDialogStore((s) => s.activeDialog);
-  const openDialog = useDialogStore((s) => s.openDialog);
 
-  const queryErrorsData = useSyncExternalStore(
-    (cb) => queryClient.getQueryCache().subscribe(cb),
-    () => {
-      const errors = queryClient
-        .getQueryCache()
-        .getAll()
-        .filter((q) => q.state.status === "error");
-
-      if (errors.length === 0) return "";
-
-      // Create a stable string representation of the current errors
-      return errors
-        .map(
-          (q) =>
-            `${JSON.stringify(q.queryKey)}:${(q.state.error as any)?.message}`,
-        )
-        .join("|");
-    },
-  );
-
-  const queryErrors = useMemo(() => {
-    return queryClient
-      .getQueryCache()
-      .getAll()
-      .filter((q) => q.state.status === "error")
-      .map((q) => ({
-        queryKey: q.queryKey,
-        message: (q.state.error as any)?.message || "An unknown error occurred",
-      }));
-    // oxlint-disable-next-line eslint-plugin-react-hooks/exhaustive-deps
-  }, [queryErrorsData, queryClient]);
-
-  const hasError = queryErrors.length > 0;
-  const prevErrorCount = useRef(0);
-
-  useEffect(() => {
-    // don't show dialog in prod
-    if (import.meta.env.PROD) return;
-
-    if (queryErrors.length > prevErrorCount.current && activeDialog === null) {
-      openDialog({ type: "query-errors", errors: queryErrors });
-    }
-    prevErrorCount.current = queryErrors.length;
-  }, [queryErrors, activeDialog, openDialog]);
+  const failure = useApiFailure();
+  const hasError = failure !== null;
 
   const { data: service, isPending } = useQuery({
     ...singleServiceQueryOptions(serviceId),
@@ -148,20 +98,8 @@ export function AppHeader() {
         <div
           className={cn(
             "mr-1 flex items-center gap-1.5 text-xs text-muted-foreground transition-colors",
-            hasError && "cursor-pointer hover:text-red-500",
+            hasError && "text-destructive",
           )}
-          onKeyUp={() => {
-            if (import.meta.env.PROD) return;
-            if (hasError) {
-              openDialog({ type: "query-errors", errors: queryErrors });
-            }
-          }}
-          onClick={() => {
-            if (import.meta.env.PROD) return;
-            if (hasError) {
-              openDialog({ type: "query-errors", errors: queryErrors });
-            }
-          }}
         >
           <span className="relative flex size-2">
             {isNavigating ? (

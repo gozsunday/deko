@@ -11,14 +11,7 @@ export type AppDialogState =
   | { type: "rename-token"; token: TokenDialogPayload }
   | { type: "rotate-token"; token: TokenDialogPayload }
   | { type: "revoke-token"; token: TokenDialogPayload }
-  | { type: "delete-service"; serviceId: string; serviceName: string }
-  | {
-      type: "query-errors";
-      errors: Array<{
-        queryKey: ReadonlyArray<unknown>;
-        message: string;
-      }>;
-    };
+  | { type: "delete-service"; serviceId: string; serviceName: string };
 
 type DialogStore = {
   activeDialog: AppDialogState | null;

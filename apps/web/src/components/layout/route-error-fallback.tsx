@@ -10,15 +10,24 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { isApiAuthError } from "@/lib/api-auth";
+import { useApiFailure } from "@/hooks/use-api-failure";
+import { extractErrorCode, shouldSurfaceError } from "@/lib/api-errors";
 import { extractApiErrorBody } from "@/lib/error";
 
 export function RouteErrorFallback({ error, reset }: ErrorComponentProps) {
-  if (isApiAuthError(error)) return null;
+  const banner = useApiFailure();
 
-  // Prefer the API's `details`: those strings are written to be read by a
-  // person. Fall back to the JS error's own message, which is what a plain
-  // render-time exception (as opposed to a failed request) will have.
+  const code = extractErrorCode(error);
+
+  if (!shouldSurfaceError(error)) return null;
+
+  // alert banner already reports anything that reached the query cache, which is
+  // every error a `beforeLoad`/`loader` throws. this card only shows what the
+  // banner cannot see a render-time exception, or a failure the catalog has no
+  // specific copy for.
+  if (banner !== null && banner.code === code) return null;
+
+  // show the API's `details`, and if absent, fall back to the JS error's own message
   const details =
     extractApiErrorBody(error)?.details ??
     (error instanceof Error && error.message ? error.message : undefined);

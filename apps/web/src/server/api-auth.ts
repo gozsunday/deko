@@ -1,7 +1,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
-import { extractErrorCode, isApiAuthError } from "@/lib/api-auth";
+import { extractErrorCode, shouldSurfaceError } from "@/lib/api-errors";
 import { $fetchAndThrow } from "@/lib/fetch";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -19,7 +19,7 @@ export const $checkApiAuth = createServerFn().handler(
 
       return { ok: true };
     } catch (error) {
-      if (isApiAuthError(error)) {
+      if (shouldSurfaceError(error)) {
         // deliberately does not print the token, the response, or the request
         // headers. prints only the safe error code.
         console.error(
