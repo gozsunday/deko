@@ -6,7 +6,13 @@ import { levelEnum, logEvent, methodEnum } from "../schemas/event.schema";
 export const LevelEnumSchema = createSelectSchema(levelEnum);
 export const MethodEnumSchema = createSelectSchema(methodEnum);
 export const PeriodEnumSchema = z.enum(["1h", "24h", "7d"]);
-export const GranularityEnumSchema = z.enum(["minute", "15minute", "hour", "2hour", "day"]);
+export const GranularityEnumSchema = z.enum([
+  "minute",
+  "15minute",
+  "hour",
+  "2hour",
+  "day",
+]);
 export const TopEndpointSortBySchema = z.enum([
   "requests",
   "errors",
