@@ -2,9 +2,11 @@ import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query";
 
+import { RouteErrorFallback } from "@/components/layout/route-error-fallback";
+
 import { routeTree } from "./routeTree.gen";
 
-// should block the default react query retry mechanism from apply for all 
+// should block the default react query retry mechanism from apply for all
 // 400 errors except for 408 and 429
 const shouldRetryQuery = (failureCount: number, error: unknown): boolean => {
   if (failureCount >= 3) return false;
@@ -31,6 +33,7 @@ export const getRouter = () => {
   const router = createRouter({
     routeTree,
     context: { queryClient },
+    defaultErrorComponent: RouteErrorFallback,
     scrollRestoration: true,
     defaultPreload: "render",
     defaultPreloadDelay: 0,

@@ -3,6 +3,8 @@ import { useSyncExternalStore } from "react";
 
 import { ADMIN_AUTH_ERROR_CODES } from "@repo/shared/admin-auth";
 
+import { extractApiErrorBody } from "./error";
+
 // codes that mean "the admin credential was rejected"
 export const API_AUTH_ERROR_CODES = [
   ADMIN_AUTH_ERROR_CODES.missing,
@@ -13,26 +15,8 @@ const API_AUTH_ERROR_CODE_SET: ReadonlySet<string> = new Set(
   API_AUTH_ERROR_CODES,
 );
 
-export const extractErrorCode = (error: unknown): string | undefined => {
-  if (typeof error !== "object" || error === null) return undefined;
-
-  const parsed = (error as { error?: unknown }).error;
-  if (typeof parsed !== "object" || parsed === null) return undefined;
-
-  const candidate = parsed as { code?: unknown; error?: unknown };
-
-  // Shape 2: the inner error object.
-  if (typeof candidate.code === "string") return candidate.code;
-
-  // Shape 1: the full response envelope, unwrap one more level.
-  const inner = candidate.error;
-  if (typeof inner === "object" && inner !== null) {
-    const innerCode = (inner as { code?: unknown }).code;
-    if (typeof innerCode === "string") return innerCode;
-  }
-
-  return undefined;
-};
+export const extractErrorCode = (error: unknown): string | undefined =>
+  extractApiErrorBody(error)?.code;
 
 export const isApiAuthError = (error: unknown): boolean => {
   const code = extractErrorCode(error);
