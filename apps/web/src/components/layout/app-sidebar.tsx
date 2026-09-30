@@ -97,7 +97,7 @@ export function AppSidebar() {
               render={
                 // oxlint-disable-next-line jsx_a11y/anchor-has-content
                 <a
-                  href="https://github.com/chiagxziem/deko"
+                  href="https://github.com/gozsunday/deko"
                   target="_blank"
                   rel="noopener noreferrer"
                 />
