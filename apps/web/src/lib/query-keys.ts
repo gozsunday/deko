@@ -1,4 +1,5 @@
 export const queryKeys = {
+  apiAuth: () => ["api-auth"] as const,
   services: () => ["services"] as const,
   service: (serviceId: string) => ["service", serviceId] as const,
   logs: (serviceId: string, filters: Record<string, unknown>) =>

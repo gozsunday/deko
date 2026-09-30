@@ -7,6 +7,7 @@ import { logger } from "hono/logger";
 import { secureHeaders } from "hono/secure-headers";
 
 import env from "@/lib/env";
+import { adminAuth } from "@/middleware/admin-auth";
 import emojiFavicon from "@/middleware/emoji-favicon";
 import errorHandler from "@/middleware/error-handler";
 import notFoundRoute from "@/middleware/not-found-route";
@@ -53,6 +54,10 @@ export const createApp = () => {
   app.use(compress());
   app.use(logger());
   app.use(emojiFavicon("🪵"));
+
+  // guard the services and dashboard routes with the admin auth
+  app.use("/api/services/*", adminAuth);
+  app.use("/api/dashboard/*", adminAuth);
 
   // OpenAPI
   app.get(

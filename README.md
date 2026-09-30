@@ -45,8 +45,11 @@ Set at minimum:
 - PG_USER
 - PG_PASSWORD
 - ENCRYPTION_KEY
+- ADMIN_TOKEN
 - API_URL
 - WEB_URL
+
+Generate ENCRYPTION_KEY and ADMIN_TOKEN with `openssl rand -hex 32`.
 
 ### 2. Build and run
 
@@ -77,6 +80,62 @@ Remove volumes as well:
 
 ```bash
 docker compose -f docker-compose.prod.yaml down -v
+```
+
+## Security
+
+Deko uses two separate credentials, for two separate jobs.
+
+| Credential        | Header                    | Grants                                                    | Stored where                                             |
+| ----------------- | ------------------------- | --------------------------------------------------------- | -------------------------------------------------------- |
+| **Admin token**   | `Authorization: Bearer …` | Everything: all services, all logs, minting ingest tokens | `ADMIN_TOKEN` env var, in the `api` and `web` containers |
+| **Service token** | `x-deko-service-token: …` | Write-only access to `POST /api/ingest`                   | Minted per service in the UI, shown once                 |
+
+**The admin token is required.** The `api` and `web` services both refuse to
+start without it, and they must be given the same value. It is the only thing
+protecting `/api/services` and `/api/dashboard`, so anyone who has it can read
+every log Deko holds. Treat it like a password.
+
+The web app sends it on your behalf. It is read only inside server-side
+functions, so it is never present in the browser and there is nothing for a
+script to steal from a page.
+
+Publicly reachable without any credential:
+
+- `POST /api/ingest` — authenticates with a service token
+- `GET /api/health` — liveness probe
+- `GET /api/doc` and `GET /api/reference` — the OpenAPI spec, which contains no secrets
+
+### Authentication failure responses
+
+| Situation                               | Status | Error code              |
+| --------------------------------------- | ------ | ----------------------- |
+| No `Authorization` header               | 401    | `MISSING_ADMIN_TOKEN`   |
+| Token does not match                    | 401    | `INVALID_ADMIN_TOKEN`   |
+| Header is not a valid bearer credential | 400    | `MALFORMED_ADMIN_TOKEN` |
+
+### Calling the API directly
+
+Anything hitting `/api/services` or `/api/dashboard` from outside the web app
+needs the admin token:
+
+```http
+GET http://localhost:8000/api/services
+Authorization: Bearer <ADMIN_TOKEN>
+```
+
+The Bruno collection in `requests/` is already wired up for this. Point its
+`ADMIN_TOKEN` variable at your value.
+
+### Rotating the admin token
+
+There is no UI for this. Change `ADMIN_TOKEN`, then restart **both** the `api`
+and `web` services — a mismatch between them makes the dashboard unrenderable.
+If the two ever disagree, the web UI shows a red banner naming the problem, and
+the reason is written to the web container's logs:
+
+```bash
+docker compose -f docker-compose.prod.yaml logs web | grep ADMIN_TOKEN
 ```
 
 ## Integrating with your API
@@ -145,16 +204,16 @@ x-deko-service-token: <your-token>
 
 | Field         | Type                                                   | Required | Description                                 |
 | ------------- | ------------------------------------------------------ | -------- | ------------------------------------------- |
-| `level`       | `debug` \| `info` \| `warn` \| `error`                 | ✅       | Log severity                                |
-| `timestamp`   | ISO 8601 string                                        | ✅       | When the request was handled                |
-| `environment` | string                                                 | ✅       | e.g. `production`, `staging`                |
-| `method`      | `GET` \| `POST` \| `PUT` \| `PATCH` \| `DELETE` \| ... | ✅       | HTTP method                                 |
-| `path`        | string                                                 | ✅       | Request path                                |
-| `status`      | number                                                 | ✅       | HTTP response status code                   |
-| `duration`    | number                                                 | ✅       | Response time in milliseconds               |
-| `message`     | string                                                 | —        | Human-readable description or error message |
-| `sessionId`   | string                                                 | —        | Session or user identifier for grouping     |
-| `meta`        | object                                                 | —        | Any additional key/value data               |
+| `level`       | `debug` \| `info` \| `warn` \| `error`                 | true     | Log severity                                |
+| `timestamp`   | ISO 8601 string                                        | true     | When the request was handled                |
+| `environment` | string                                                 | true     | e.g. `production`, `staging`                |
+| `method`      | `GET` \| `POST` \| `PUT` \| `PATCH` \| `DELETE` \| ... | true     | HTTP method                                 |
+| `path`        | string                                                 | true     | Request path                                |
+| `status`      | number                                                 | true     | HTTP response status code                   |
+| `duration`    | number                                                 | true     | Response time in milliseconds               |
+| `message`     | string                                                 | false    | Human-readable description or error message |
+| `sessionId`   | string                                                 | false    | Session or user identifier for grouping     |
+| `meta`        | object                                                 | false    | Any additional key/value data               |
 
 Rate limits: **100 requests/second** and **10,000 events/minute** per service token.
 

@@ -83,6 +83,7 @@ services:
       DATABASE_URL: postgresql://${PG_USER}:${PG_PASSWORD}@pg:5432/deko
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?ADMIN_TOKEN is required}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
 
   # Background worker (Bun & BullMQ)
@@ -118,6 +119,7 @@ services:
       NODE_ENV: production
       API_URL: ${API_URL}
       DATABASE_URL: postgresql://${PG_USER}:${PG_PASSWORD}@pg:5432/deko
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?ADMIN_TOKEN is required}
 
 volumes:
   pgdata:

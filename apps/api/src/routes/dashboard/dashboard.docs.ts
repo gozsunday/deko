@@ -15,6 +15,8 @@ import {
 
 import HttpStatusCodes from "@/lib/http-status-codes";
 import {
+  adminAuthMalformedExample,
+  createAdminAuthErrorResponse,
   createErrorResponse,
   createGenericErrorResponse,
   createRateLimitErrorResponse,
@@ -39,6 +41,7 @@ export const getServiceOverviewStatsDoc = describeRoute({
       },
     ),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -56,6 +59,7 @@ export const getServiceOverviewStatsDoc = describeRoute({
         fields: dashboardExamples.serviceOverviewStatsValErrs.invalidData,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
       "Service not found",
       {
@@ -81,6 +85,7 @@ export const getServiceTimeseriesStatsDoc = describeRoute({
       },
     ),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -103,6 +108,7 @@ export const getServiceTimeseriesStatsDoc = describeRoute({
         details: "Invalid metric requested",
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
       "Service not found",
       {
@@ -125,6 +131,7 @@ export const getServiceLogsDoc = describeRoute({
       dataSchema: ServiceLogListSchema,
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -147,6 +154,7 @@ export const getServiceLogsDoc = describeRoute({
         details: "Invalid pagination cursor",
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
       "Service not found",
       {
@@ -169,6 +177,7 @@ export const getSingleLogDoc = describeRoute({
       dataSchema: ServiceLogSchema,
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -186,6 +195,7 @@ export const getSingleLogDoc = describeRoute({
         fields: dashboardExamples.singleServiceLogValErrs.invalidData,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createErrorResponse("Service not found", {
       serviceNotFound: {
         summary: "Service not found",
@@ -215,6 +225,7 @@ export const getStatusCodeBreakdownDoc = describeRoute({
       },
     ),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -232,6 +243,7 @@ export const getStatusCodeBreakdownDoc = describeRoute({
         fields: dashboardExamples.breakdownValErrs.invalidData,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createErrorResponse("Service not found", {
       serviceNotFound: {
         summary: "Service not found",
@@ -257,6 +269,7 @@ export const getLogLevelBreakdownDoc = describeRoute({
       },
     ),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -274,6 +287,7 @@ export const getLogLevelBreakdownDoc = describeRoute({
         fields: dashboardExamples.breakdownValErrs.invalidData,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createErrorResponse("Service not found", {
       serviceNotFound: {
         summary: "Service not found",
@@ -296,6 +310,7 @@ export const getTopEndpointsDoc = describeRoute({
       dataSchema: TopEndpointsResponseSchema,
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -313,6 +328,7 @@ export const getTopEndpointsDoc = describeRoute({
         fields: dashboardExamples.topEndpointsValErrs.invalidData,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
       "Service not found",
       { code: "NOT_FOUND", details: "Service not found" },
@@ -333,6 +349,7 @@ export const getErrorGroupsDoc = describeRoute({
       dataSchema: ErrorGroupsResponseSchema,
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -350,6 +367,7 @@ export const getErrorGroupsDoc = describeRoute({
         fields: dashboardExamples.errorGroupsValErrs.invalidData,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
       "Service not found",
       { code: "NOT_FOUND", details: "Service not found" },
@@ -370,6 +388,7 @@ export const getLogsByRequestIdDoc = describeRoute({
       dataSchema: RequestTraceLogsResponseSchema,
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -379,6 +398,7 @@ export const getLogsByRequestIdDoc = describeRoute({
         fields: dashboardExamples.requestLogsValErrs.idErrors,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createErrorResponse("Not found", {
       serviceNotFound: {
         summary: "Service not found",
@@ -407,6 +427,7 @@ export const getSlowLogsDoc = describeRoute({
       dataSchema: SlowLogsResponseSchema,
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -429,6 +450,7 @@ export const getSlowLogsDoc = describeRoute({
         details: "Invalid pagination cursor",
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
       "Service not found",
       { code: "NOT_FOUND", details: "Service not found" },

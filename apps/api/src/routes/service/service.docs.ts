@@ -9,8 +9,11 @@ import {
 
 import HttpStatusCodes from "@/lib/http-status-codes";
 import {
+  adminAuthMalformedExample,
+  createAdminAuthErrorResponse,
   createErrorResponse,
   createGenericErrorResponse,
+  createMalformedAdminAuthErrorResponse,
   createRateLimitErrorResponse,
   createServerErrorResponse,
   createSuccessResponse,
@@ -28,6 +31,8 @@ export const getServicesDoc = describeRoute({
       details: "Services retrieved successfully",
       dataSchema: z.array(ServiceSelectSchema),
     }),
+    [HttpStatusCodes.BAD_REQUEST]: createMalformedAdminAuthErrorResponse(),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.TOO_MANY_REQUESTS]: createRateLimitErrorResponse(),
     [HttpStatusCodes.INTERNAL_SERVER_ERROR]: createServerErrorResponse(),
   },
@@ -42,6 +47,7 @@ export const createServiceDoc = describeRoute({
       dataSchema: ServiceSelectSchema,
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       validationError: {
         summary: "Invalid request data",
         code: "INVALID_DATA",
@@ -51,6 +57,7 @@ export const createServiceDoc = describeRoute({
         fields: servicesExamples.createServiceValErrs,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.TOO_MANY_REQUESTS]: createRateLimitErrorResponse(),
     [HttpStatusCodes.INTERNAL_SERVER_ERROR]: createServerErrorResponse(),
   },
@@ -66,6 +73,8 @@ export const getServiceDoc = describeRoute({
         tokens: z.array(ServiceTokenPublicSchema),
       }),
     }),
+    [HttpStatusCodes.BAD_REQUEST]: createMalformedAdminAuthErrorResponse(),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
       "Service not found",
       {
@@ -89,6 +98,7 @@ export const updateServiceDoc = describeRoute({
       }),
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidServiceID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -108,6 +118,7 @@ export const updateServiceDoc = describeRoute({
         fields: servicesExamples.updateServiceValErrs,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
       "Service not found",
       {
@@ -131,6 +142,7 @@ export const deleteServiceDoc = describeRoute({
       }),
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidServiceID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -142,6 +154,7 @@ export const deleteServiceDoc = describeRoute({
         },
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
       "Service not found",
       {
@@ -171,6 +184,7 @@ export const createServiceTokenDoc = describeRoute({
       dataSchema: ServiceTokenSelectSchema,
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidUUID: {
         summary: "Invalid service ID",
         code: "INVALID_DATA",
@@ -186,6 +200,7 @@ export const createServiceTokenDoc = describeRoute({
         fields: servicesExamples.createServiceTokenValErrs,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
       "Service not found",
       {
@@ -207,6 +222,7 @@ export const updateServiceTokenDoc = describeRoute({
       dataSchema: ServiceTokenPublicSchema,
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidServiceOrTokenID: {
         summary: "Invalid service or Token ID",
         code: "INVALID_DATA",
@@ -228,6 +244,7 @@ export const updateServiceTokenDoc = describeRoute({
         fields: servicesExamples.updateServiceTokenValErrs,
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createErrorResponse(
       "Service or token not found",
       {
@@ -259,6 +276,7 @@ export const deleteServiceTokenDoc = describeRoute({
       }),
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidServiceOrTokenID: {
         summary: "Invalid service or Token ID",
         code: "INVALID_DATA",
@@ -272,6 +290,7 @@ export const deleteServiceTokenDoc = describeRoute({
         },
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createErrorResponse(
       "Service or token not found",
       {
@@ -301,6 +320,7 @@ export const rotateServiceTokenDoc = describeRoute({
       dataSchema: ServiceTokenSelectSchema,
     }),
     [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
       invalidServiceOrTokenID: {
         summary: "Invalid service or token ID",
         code: "INVALID_DATA",
@@ -314,6 +334,7 @@ export const rotateServiceTokenDoc = describeRoute({
         },
       },
     }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
     [HttpStatusCodes.NOT_FOUND]: createErrorResponse(
       "Service or token not found",
       {

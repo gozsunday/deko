@@ -1,6 +1,8 @@
 import { resolver } from "hono-openapi";
 import { z } from "zod";
 
+import { ADMIN_AUTH_ERROR_CODES } from "@repo/shared/admin-auth";
+
 /**
  * Helper function to create a success response schema for OpenAPI responses.
  */
@@ -115,6 +117,84 @@ export const createGenericErrorResponse = (
               error: {
                 code: content.code,
                 details: content.details,
+                fields: {},
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+};
+
+/**
+ * Helper function to create the 401 response used by every admin-protected route.
+ */
+export const createAdminAuthErrorResponse = () => {
+  return {
+    description:
+      "Missing or invalid admin token. Send 'Authorization: Bearer <ADMIN_TOKEN>'.",
+    content: {
+      "application/json": {
+        schema: resolver(createErrorResponseSchema()),
+        examples: {
+          missingAdminToken: {
+            summary: "Missing admin token",
+            value: {
+              status: "error",
+              error: {
+                code: ADMIN_AUTH_ERROR_CODES.missing,
+                details:
+                  "Missing admin token. Provide an 'Authorization: Bearer <ADMIN_TOKEN>' header.",
+                fields: {},
+              },
+            },
+          },
+          invalidAdminToken: {
+            summary: "Invalid admin token",
+            value: {
+              status: "error",
+              error: {
+                code: ADMIN_AUTH_ERROR_CODES.invalid,
+                details: "Invalid admin token.",
+                fields: {},
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+};
+
+/**
+ * Example for the malformed-Authorization-header case.
+ */
+export const adminAuthMalformedExample = {
+  summary: "Malformed Authorization header",
+  code: ADMIN_AUTH_ERROR_CODES.malformed,
+  details:
+    "Malformed Authorization header. Expected 'Authorization: Bearer <ADMIN_TOKEN>'.",
+};
+
+/**
+ * Builds a standalone 400 response for a malformed Authorization header. Used
+ * by the protected endpoints that do not otherwise document a 400.
+ */
+export const createMalformedAdminAuthErrorResponse = () => {
+  return {
+    description: adminAuthMalformedExample.details,
+    content: {
+      "application/json": {
+        schema: resolver(createErrorResponseSchema()),
+        examples: {
+          malformedAdminToken: {
+            summary: adminAuthMalformedExample.summary,
+            value: {
+              status: "error",
+              error: {
+                code: adminAuthMalformedExample.code,
+                details: adminAuthMalformedExample.details,
                 fields: {},
               },
             },

@@ -6,9 +6,11 @@ import {
 } from "@tanstack/react-router";
 import { ThemeProvider } from "better-themes";
 
+import { ApiAuthAlert } from "@/components/layout/api-auth-alert";
 import { DialogHost } from "@/components/layout/dialog-host";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { apiAuthQueryOptions } from "@/server/api-auth";
 
 import appCss from "@/styles/app.css?url";
 
@@ -38,6 +40,17 @@ export const Route = createRootRouteWithContext<AppRouterContext>()({
     ],
   }),
   shellComponent: RootDocument,
+  loader: async ({ context }) => {
+    try {
+      await context.queryClient.ensureQueryData(apiAuthQueryOptions());
+    } catch (error) {
+      console.error(
+        "[api-auth] Auth probe itself failed to run. This is a bug in the " +
+          "probe, not an ADMIN_TOKEN problem.",
+        error,
+      );
+    }
+  },
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
@@ -56,6 +69,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         >
           <TooltipProvider>
             <div className="relative isolate bg-background text-foreground antialiased selection:bg-muted-foreground selection:text-muted">
+              <ApiAuthAlert />
               {children}
               <DialogHost />
             </div>

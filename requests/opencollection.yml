@@ -15,15 +15,21 @@ config:
       bypassProxy: ""
 
 request:
+  auth:
+    mode: bearer
+    bearer:
+      token: "{{ADMIN_TOKEN}}"
   variables:
     - name: BASE_URL
       value: http://localhost:8000
+    - name: SIM_URL
+      value: http://localhost:5000
+    - name: ADMIN_TOKEN
+      value: ""
     - name: SERVICE_ID
       value: fac44a62-b44d-4782-a12c-8c4513c3ef23
     - name: TOKEN_ID
-      value: deko_sk_d96413717279430d9fc8a7ecde976dec
-    - name: SIM_URL
-      value: http://localhost:5000
+      value: ""
 bundled: false
 extensions:
   bruno:

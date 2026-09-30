@@ -16,6 +16,10 @@ const errorHandler: ErrorHandler = (err, c) => {
 
   // Handle Hono HTTPException (thrown by middleware, auth, etc.)
   if (err instanceof HTTPException) {
+    if (err.res) {
+      return err.getResponse();
+    }
+
     const status = err.status;
     const message = err.message || getDefaultMessageForStatus(status);
 
