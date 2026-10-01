@@ -26,6 +26,9 @@ import { queryKeys } from "@/lib/query-keys";
 import { $getServiceLogs, $getSlowLogs } from "@/server/dashboard";
 import { usePeriodStore } from "@/stores/period-store";
 
+const LOGS_PAGE_SIZE = 100;
+const MAX_LOG_PAGES = 5;
+
 const logsSearchSchema = z.object({
   view: z.enum(["all", "slow"]).catch("all"),
   search: z.string().optional().catch(undefined),
@@ -115,11 +118,15 @@ function LogsPage() {
           method: searchParams.method,
           status: searchParams.status,
           cursor,
-          limit: 100,
+          limit: LOGS_PAGE_SIZE,
         },
       });
     },
     getNextPageParam: (lastPage) => lastPage.pagination.nextCursor ?? undefined,
+    // an unbounded infinite query refetches every page it holds,
+    // so 20 scrolled pages meant 20 requests every interval.
+    // Older pages past the cap are dropped.
+    maxPages: MAX_LOG_PAGES,
     enabled: !isSlowView,
   });
 
@@ -146,12 +153,13 @@ function LogsPage() {
           method: searchParams.method,
           status: searchParams.status,
           cursor,
-          limit: 100,
+          limit: LOGS_PAGE_SIZE,
           minDuration: 500,
         },
       });
     },
     getNextPageParam: (lastPage) => lastPage.pagination.nextCursor ?? undefined,
+    maxPages: MAX_LOG_PAGES,
     enabled: isSlowView,
   });
 
@@ -310,7 +318,8 @@ function LogsPage() {
         onFilterChange={handleFilterChange}
         onClearAllFilters={handleClearAllFilters}
         manualFiltering
-        defaultPagination={{ pageIndex: 0, pageSize: 10000 }}
+        virtualize
+        onReachEnd={handleLoadMore}
         emptyMessage="No logs found. Try adjusting your filters or time range."
         onRowClick={handleSelectLog}
         tableBodyAppend={tableBodyAppend}
@@ -325,6 +334,7 @@ function LogsPage() {
       handleClearAllFilters,
       handleSelectLog,
       tableBodyAppend,
+      handleLoadMore,
     ],
   );
 
@@ -347,23 +357,7 @@ function LogsPage() {
       {logsQuery.isError ? (
         <LogsTableError onRetry={() => logsQuery.refetch()} />
       ) : (
-        <>
-          {tableElement}
-
-          {!logsQuery.isPending && hasNextPage && (
-            <div className="flex items-center justify-center pt-2">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleLoadMore}
-                disabled={isFetchingNextPage}
-              >
-                {isFetchingNextPage ? "Loading more logs..." : "Load more"}
-              </Button>
-            </div>
-          )}
-        </>
+        <>{tableElement}</>
       )}
 
       {selectedLog && (

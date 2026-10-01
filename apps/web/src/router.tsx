@@ -24,7 +24,9 @@ export const getRouter = () => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
-        refetchInterval: 15_000,
+        staleTime: 60_000,
+        refetchInterval: 60_000,
+        refetchOnWindowFocus: false,
         retry: shouldRetryQuery,
       },
     },

@@ -1,0 +1,1 @@
+CREATE INDEX "log_event_service_env_time_idx" ON "log_event" USING btree ("service_id", "environment", "timestamp" DESC NULLS LAST);

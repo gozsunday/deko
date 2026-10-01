@@ -68,6 +68,11 @@ export const logEvent = pgTable(
       table.status,
       table.timestamp.desc(),
     ),
+    index("log_event_service_env_time_idx").on(
+      table.serviceId,
+      table.environment,
+      table.timestamp.desc(),
+    ),
   ],
 );
 export const logEventRelations = relations(logEvent, ({ one }) => ({

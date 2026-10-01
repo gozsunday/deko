@@ -43,6 +43,13 @@
       "when": 1778859010169,
       "tag": "0005_reduce_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790892241613,
+      "tag": "0006_safe_whirlwind",
+      "breakpoints": true
     }
   ]
 }

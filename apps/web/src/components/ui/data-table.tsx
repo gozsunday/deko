@@ -18,11 +18,14 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   type Dispatch,
   type ReactNode,
   type SetStateAction,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -154,9 +157,27 @@ interface DataTableProps<TData, TValue> {
   onPaginationChange?: Dispatch<SetStateAction<PaginationState>>;
   /** Optional rows rendered at the end of the table body (e.g. infinite-loading rows). */
   tableBodyAppend?: ReactNode;
+  /**
+   * Render only the rows in view instead of all of them. Ignored when `rowCount` is set,
+   * since those tables already hold a single server-sized page.
+   */
+  virtualize?: boolean;
+  /** Height of the scroll viewport while virtualizing. */
+  virtualMaxHeight?: string;
+  /**
+   * Called when scrolling reaches the end of the list, so a paged table can
+   * fetch the next page without a button. Only observed while virtualizing,
+   * since that is the only mode with a scroll viewport of its own.
+   */
+  onReachEnd?: () => void;
 }
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [5, 10, 25, 50, 100];
+
+/** Approximate row height in px, used to size the virtual window. */
+const VIRTUAL_ROW_ESTIMATE = 44;
+/** Extra rows rendered above and below the viewport to hide scroll seams. */
+const VIRTUAL_OVERSCAN = 12;
 
 export const DataTable = <TData, TValue>({
   columns,
@@ -181,8 +202,14 @@ export const DataTable = <TData, TValue>({
   pagination: controlledPagination,
   onPaginationChange: setControlledPagination,
   tableBodyAppend,
+  virtualize = false,
+  virtualMaxHeight = "70vh",
+  onReachEnd,
 }: DataTableProps<TData, TValue>) => {
   const isServerSide = rowCount !== undefined;
+  // a server-paged table already holds one page, so there is nothing to
+  // virtualize
+  const isVirtual = virtualize && !isServerSide;
   const isPaginationControlled =
     controlledPagination !== undefined && setControlledPagination !== undefined;
 
@@ -224,9 +251,10 @@ export const DataTable = <TData, TValue>({
     getFilteredRowModel: manualFiltering ? undefined : getFilteredRowModel(),
     manualFiltering,
     onColumnFiltersChange: setColumnFilters,
-    getPaginationRowModel: isServerSide ? undefined : getPaginationRowModel(),
-    manualPagination: isServerSide,
-    rowCount: isServerSide ? rowCount : undefined,
+    getPaginationRowModel:
+      isServerSide || isVirtual ? undefined : getPaginationRowModel(),
+    manualPagination: isServerSide || isVirtual,
+    rowCount: isServerSide ? rowCount : isVirtual ? data.length : undefined,
     autoResetPageIndex: false,
     onPaginationChange: isPaginationControlled
       ? setControlledPagination
@@ -265,6 +293,85 @@ export const DataTable = <TData, TValue>({
       globalFilter: effectiveGlobalFilter,
     },
   });
+
+  const rows = table.getRowModel().rows;
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // this stays inert when not virtualizing because scrollRef is
+  // never attached in that case
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => VIRTUAL_ROW_ESTIMATE,
+    overscan: VIRTUAL_OVERSCAN,
+  });
+
+  const virtualItems = isVirtual ? virtualizer.getVirtualItems() : [];
+
+  // row indexes to render: the visible window when virtualizing, all of them
+  // otherwise
+  const visibleIndexes = isVirtual
+    ? virtualItems.map((item) => item.index)
+    : rows.map((_, index) => index);
+
+  // spacer heights stand in for the rows above and below the window, so the
+  // scrollbar reflects the full list rather than only what is mounted.
+  const padTop = virtualItems[0]?.start ?? 0;
+  const padBottom = isVirtual
+    ? virtualizer.getTotalSize() - (virtualItems.at(-1)?.end ?? 0)
+    : 0;
+
+  // used to know when the scrolling reaches the bottom of the scroll viewport
+  const sentinelRef = useRef<HTMLTableCellElement>(null);
+
+  // held in a ref so the observer below is built once
+  const onReachEndRef = useRef(onReachEnd);
+
+  useEffect(() => {
+    onReachEndRef.current = onReachEnd;
+  }, [onReachEnd]);
+
+  // Auto-load fires at most once per entry into view. Once a paged list hits its
+  // page cap the content stops growing, so the sentinel stays parked on screen:
+  // firing on visibility alone would load a page, drop the oldest, sit at the
+  // same height, and trigger again immediately. Latching on the transition --
+  // leaving the viewport re-arms it -- breaks that, and unlike watching scroll
+  // events it cannot be re-armed by the browser clamping scrollTop when the list
+  // height changes.
+  const armedRef = useRef(true);
+
+  // The sentinel only exists once there are rows to render, so this has to be a
+  // dependency: observing on mount alone would find no node and never retry.
+  // `hasRows` flips false->true exactly once per result set, so this does not
+  // reintroduce the re-observe loop above.
+  const hasRows = rows.length > 0;
+
+  useEffect(() => {
+    if (!isVirtual || !hasRows) return;
+
+    const sentinel = sentinelRef.current;
+    const root = scrollRef.current;
+    if (!sentinel || !root) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.some((entry) => entry.isIntersecting);
+        if (!visible) {
+          armedRef.current = true;
+          return;
+        }
+        if (!armedRef.current) return;
+        armedRef.current = false;
+        onReachEndRef.current?.();
+      },
+      // trigger slightly before the true bottom so the next page is usually
+      // loaded by the time the user reaches the last row
+      { root, rootMargin: "0px 0px 200px 0px" },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [isVirtual, hasRows]);
 
   const handleFilterToggle = (
     columnId: string,
@@ -613,121 +720,163 @@ export const DataTable = <TData, TValue>({
       )}
 
       {/* Table */}
-      <Table>
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <TableHead
-                  colSpan={header.colSpan}
-                  key={header.id}
-                  className={
-                    (
-                      header.column.columnDef.meta as
-                        | Record<string, string>
-                        | undefined
-                    )?.headerClassName
-                  }
-                >
-                  {header.isPlaceholder ? null : header.column.getCanSort() ? (
-                    <div
-                      role="columnheader"
-                      className={cn(
-                        header.column.getCanSort() &&
-                          "group flex h-full cursor-pointer items-center justify-start gap-1 select-none",
-                      )}
-                      onClick={header.column.getToggleSortingHandler()}
-                      onKeyUp={header.column.getToggleSortingHandler()}
-                    >
-                      {flexRender(
+      <div
+        className={isVirtual ? "overflow-y-auto" : undefined}
+        ref={isVirtual ? scrollRef : undefined}
+        // focusable so the list can be scrolled -- and so auto-load reachable --
+        // without a pointer
+        tabIndex={isVirtual ? 0 : undefined}
+        style={isVirtual ? { maxHeight: virtualMaxHeight } : undefined}
+      >
+        <Table>
+          <TableHeader
+            className={
+              isVirtual ? "sticky top-0 z-10 bg-background" : undefined
+            }
+          >
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <TableHead
+                    colSpan={header.colSpan}
+                    key={header.id}
+                    className={
+                      (
+                        header.column.columnDef.meta as
+                          | Record<string, string>
+                          | undefined
+                      )?.headerClassName
+                    }
+                  >
+                    {header.isPlaceholder ? null : header.column.getCanSort() ? (
+                      <div
+                        role="columnheader"
+                        className={cn(
+                          header.column.getCanSort() &&
+                            "group flex h-full cursor-pointer items-center justify-start gap-1 select-none",
+                        )}
+                        onClick={header.column.getToggleSortingHandler()}
+                        onKeyUp={header.column.getToggleSortingHandler()}
+                      >
+                        {flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                        <HugeiconsIcon
+                          icon={ArrowDown01Icon}
+                          className={cn(
+                            "size-3.5 shrink-0 opacity-0 transition-all duration-200 group-hover:opacity-60",
+                            header.column.getIsSorted() && "opacity-100",
+                            header.column.getIsSorted() === "asc" &&
+                              "rotate-180",
+                          )}
+                        />
+                      </div>
+                    ) : (
+                      flexRender(
                         header.column.columnDef.header,
                         header.getContext(),
-                      )}
-                      <HugeiconsIcon
-                        icon={ArrowDown01Icon}
-                        className={cn(
-                          "size-3.5 shrink-0 opacity-0 transition-all duration-200 group-hover:opacity-60",
-                          header.column.getIsSorted() && "opacity-100",
-                          header.column.getIsSorted() === "asc" && "rotate-180",
-                        )}
-                      />
-                    </div>
-                  ) : (
-                    flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
-                    )
-                  )}
-                </TableHead>
-              ))}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows?.length ? (
-            <>
-              {table.getRowModel().rows.map((row) => (
-                <TableRow
-                  className={cn(onRowClick && "cursor-pointer")}
-                  data-state={row.getIsSelected() && "selected"}
-                  key={row.id}
-                  onClick={
-                    onRowClick
-                      ? (e: React.MouseEvent) => {
-                          // Don't fire when clicking interactive elements or portaled
-                          // dialogs/menus — their e.target lives in document.body but
-                          // React still bubbles synthetic events up the fiber tree.
-                          const target = e.target as Element;
-                          if (
-                            target.closest(
-                              'button, a, input, select, textarea, [role="button"], [role="menuitem"], [role="menu"], [role="dialog"], [role="alertdialog"], [role="option"], [role="listbox"]',
-                            )
-                          ) {
-                            return;
-                          }
-                          onRowClick(row.original);
-                        }
-                      : undefined
-                  }
-                >
-                  {row.getVisibleCells().map((cell) => (
+                      )
+                    )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+          <TableBody>
+            {rows.length ? (
+              <>
+                {padTop > 0 ? (
+                  <TableRow aria-hidden className="hover:bg-transparent">
                     <TableCell
-                      key={cell.id}
-                      className={
-                        (
-                          cell.column.columnDef.meta as
-                            | Record<string, string>
-                            | undefined
-                        )?.cellClassName
+                      colSpan={columns.length}
+                      style={{ height: padTop }}
+                    />
+                  </TableRow>
+                ) : null}
+                {visibleIndexes.map((rowIndex) => {
+                  const row = rows[rowIndex];
+                  if (!row) return null;
+
+                  return (
+                    <TableRow
+                      className={cn(onRowClick && "cursor-pointer")}
+                      data-index={rowIndex}
+                      data-state={row.getIsSelected() && "selected"}
+                      key={row.id}
+                      onClick={
+                        onRowClick
+                          ? (e: React.MouseEvent) => {
+                              // Don't fire when clicking interactive elements or portaled
+                              // dialogs/menus — their e.target lives in document.body but
+                              // React still bubbles synthetic events up the fiber tree.
+                              const target = e.target as Element;
+                              if (
+                                target.closest(
+                                  'button, a, input, select, textarea, [role="button"], [role="menuitem"], [role="menu"], [role="dialog"], [role="alertdialog"], [role="option"], [role="listbox"]',
+                                )
+                              ) {
+                                return;
+                              }
+                              onRowClick(row.original);
+                            }
+                          : undefined
                       }
                     >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))}
-              {tableBodyAppend}
-            </>
-          ) : tableBodyAppend ? (
-            <>{tableBodyAppend}</>
-          ) : (
-            <TableRow>
-              <TableCell
-                className="h-24 text-center text-muted-foreground"
-                colSpan={columns.length}
-              >
-                {emptyMessage}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
+                          className={
+                            (
+                              cell.column.columnDef.meta as
+                                | Record<string, string>
+                                | undefined
+                            )?.cellClassName
+                          }
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  );
+                })}
+                {padBottom > 0 ? (
+                  <TableRow aria-hidden className="hover:bg-transparent">
+                    <TableCell
+                      colSpan={columns.length}
+                      style={{ height: padBottom }}
+                    />
+                  </TableRow>
+                ) : null}
+                {tableBodyAppend}
+                {isVirtual && onReachEnd ? (
+                  <TableRow aria-hidden className="hover:bg-transparent">
+                    <TableCell ref={sentinelRef} colSpan={columns.length} />
+                  </TableRow>
+                ) : null}
+              </>
+            ) : tableBodyAppend ? (
+              <>{tableBodyAppend}</>
+            ) : (
+              <TableRow>
+                <TableCell
+                  className="h-24 text-center text-muted-foreground"
+                  colSpan={columns.length}
+                >
+                  {emptyMessage}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
-      {/* Pagination - Only show when there are multiple pages */}
-      {table.getPageCount() > 1 && (
+      {/* Pagination - Only show when there are multiple pages. A virtualized table
+          owns its own scrolling, so its page controls would be inert. */}
+      {!isVirtual && table.getPageCount() > 1 && (
         <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
           {/* Page number information */}
           <p
