@@ -1,12 +1,11 @@
-// oxlint-disable jsx_a11y/no-static-element-interactions
-
 import { RefreshIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams, useRouterState } from "@tanstack/react-router";
+import { useParams, useRouterState, useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useState } from "react";
 
+import { EnvironmentSelector } from "@/components/layout/environment-selector";
 import { PeriodSelector } from "@/components/layout/period-selector";
 import {
   Breadcrumb,
@@ -42,6 +41,7 @@ const PAGE_SEGMENT_TITLES: Record<string, string> = {
 export function AppHeader() {
   const getSingleService = useServerFn($getSingleService);
   const { serviceId } = useParams({ from: "/_app/services/$serviceId" });
+  const { environment } = useSearch({ from: "/_app/services/$serviceId" });
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
@@ -60,7 +60,7 @@ export function AppHeader() {
 
   const handleRefresh = () => {
     if (isCoolingDown) return;
-    queryClient.refetchQueries();
+    void queryClient.refetchQueries();
     setIsCoolingDown(true);
     setTimeout(() => setIsCoolingDown(false), 10_000);
   };
@@ -69,7 +69,11 @@ export function AppHeader() {
   const lastSegment = pathname.split("/").filter(Boolean).at(-1) ?? "";
   const title = PAGE_SEGMENT_TITLES[lastSegment] ?? "Deko";
 
-  const homeHref = serviceId ? `/services/${serviceId}/overview` : "/";
+  const homeHref = serviceId
+    ? `/services/${serviceId}/overview${
+        environment ? `?environment=${encodeURIComponent(environment)}` : ""
+      }`
+    : "/";
 
   return (
     <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/50 bg-background px-4">
@@ -149,6 +153,7 @@ export function AppHeader() {
           </TooltipContent>
         </Tooltip>
 
+        <EnvironmentSelector />
         <PeriodSelector />
       </div>
     </header>

@@ -7,7 +7,12 @@ import {
   Settings01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Link, useParams, useRouterState } from "@tanstack/react-router";
+import {
+  Link,
+  useParams,
+  useRouterState,
+  useSearch,
+} from "@tanstack/react-router";
 
 import { ServiceSwitcher } from "@/components/services/service-switcher";
 import {
@@ -55,6 +60,7 @@ const navItems = [
 
 export function AppSidebar() {
   const { serviceId } = useParams({ from: "/_app/services/$serviceId" });
+  const { environment } = useSearch({ from: "/_app/services/$serviceId" });
   const pathname = useRouterState({
     select: (s) => s.location.pathname,
   });
@@ -76,7 +82,13 @@ export function AppSidebar() {
               {navItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
-                    render={<Link to={item.to} params={{ serviceId }} />}
+                    render={
+                      <Link
+                        to={item.to}
+                        params={{ serviceId }}
+                        search={{ environment }}
+                      />
+                    }
                     tooltip={item.title}
                     onClick={() => setOpenMobile(false)}
                     isActive={isActive(item.to.split("/").at(-1) ?? "")}

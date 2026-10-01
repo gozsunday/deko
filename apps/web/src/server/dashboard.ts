@@ -8,6 +8,7 @@ import {
   LogLevelBreakdownQuerySchema,
   LogLevelBreakdownSchema,
   LogsQuerySchema,
+  ServiceEnvironmentsResponseSchema,
   ServiceLogListSchema,
   ServiceLogSchema,
   ServiceOverviewQuerySchema,
@@ -228,6 +229,28 @@ export const topEndpointsQueryOptions = (
   queryOptions({
     queryKey: queryKeys.topEndpoints(serviceId, filters),
     queryFn: () => $getTopEndpoints({ data: { serviceId, ...filters } }),
+  });
+
+// ————— get service environments ———————————————————
+// distinct environment values this service has logged, used to populate the
+// environment filter
+export const $getServiceEnvironments = createServerFn()
+  .inputValidator(z.uuid())
+  .handler(async ({ data: serviceId }) => {
+    const res = await $fetchAndThrow(`/dashboard/:serviceId/environments`, {
+      params: { serviceId },
+      output: successResSchema(ServiceEnvironmentsResponseSchema),
+    });
+
+    return res.data;
+  });
+
+export const environmentsQueryOptions = (serviceId: string) =>
+  queryOptions({
+    queryKey: queryKeys.environments(serviceId),
+    queryFn: () => $getServiceEnvironments({ data: serviceId }),
+    // doesn't change very often, so has a stale time of 5 mins
+    staleTime: 300_000,
   });
 
 // ————— get error groups ———————————————————

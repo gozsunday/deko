@@ -90,6 +90,18 @@ export const ServiceLogListSchema = z.object({
 
 export const ServiceLogSchema = LogEventResponseSchema;
 
+/**
+ * The distinct `environment` values a service has logged within the retention
+ * window. Backs the environment filter in the dashboard, so the UI can offer a
+ * fixed set of options instead of a free-text field.
+ *
+ * A free-text field would be a silent-failure trap: an unrecognised value simply
+ * matches no rows, so a typo renders every chart as "no data" with no error.
+ */
+export const ServiceEnvironmentsResponseSchema = z.object({
+  environments: z.array(z.string()),
+});
+
 export const StatusBreakdownQuerySchema = z.object({
   period: PeriodEnumSchema.default("24h"),
   environment: z.string().optional(),

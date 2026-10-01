@@ -42,7 +42,10 @@ const EMPTY_ENDPOINTS: never[] = [];
 
 export const Route = createFileRoute("/_app/services/$serviceId/endpoints")({
   validateSearch: endpointsSearchSchema,
-  loaderDeps: ({ search }) => ({ sortBy: search.sortBy }),
+  loaderDeps: ({ search }) => ({
+    sortBy: search.sortBy,
+    environment: search.environment,
+  }),
   loader: async ({ context, params, deps }) => {
     const { serviceId } = params;
     const period = resolvePeriodForLoader();
@@ -50,6 +53,7 @@ export const Route = createFileRoute("/_app/services/$serviceId/endpoints")({
     await context.queryClient.ensureQueryData(
       topEndpointsQueryOptions(serviceId, {
         period,
+        environment: deps.environment,
         sortBy: deps.sortBy,
         limit: 50,
       }),
@@ -90,11 +94,19 @@ function EndpointsPage() {
 
   const period = usePeriodStore((s) => s.period);
   const sortBy = searchParams.sortBy;
+  const { environment } = searchParams;
 
   const endpointsQuery = useQuery({
-    ...topEndpointsQueryOptions(serviceId, { period, sortBy, limit: 50 }),
+    ...topEndpointsQueryOptions(serviceId, {
+      period,
+      environment,
+      sortBy,
+      limit: 50,
+    }),
     queryFn: () =>
-      getTopEndpoints({ data: { serviceId, period, sortBy, limit: 50 } }),
+      getTopEndpoints({
+        data: { serviceId, period, environment, sortBy, limit: 50 },
+      }),
   });
 
   const endpoints = endpointsQuery.data?.endpoints ?? EMPTY_ENDPOINTS;

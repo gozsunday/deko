@@ -95,6 +95,7 @@ function LogsPage() {
   const allLogsQuery = useInfiniteQuery({
     queryKey: queryKeys.logs(serviceId, {
       period,
+      environment: searchParams.environment,
       search: searchParams.search,
       level: searchParams.level,
       method: searchParams.method,
@@ -108,6 +109,7 @@ function LogsPage() {
         data: {
           serviceId,
           period,
+          environment: searchParams.environment,
           search: searchParams.search,
           level: searchParams.level,
           method: searchParams.method,
@@ -124,6 +126,7 @@ function LogsPage() {
   const slowLogsQuery = useInfiniteQuery({
     queryKey: queryKeys.logs(serviceId, {
       period,
+      environment: searchParams.environment,
       search: searchParams.search,
       level: searchParams.level,
       method: searchParams.method,
@@ -137,6 +140,7 @@ function LogsPage() {
         data: {
           serviceId,
           period,
+          environment: searchParams.environment,
           search: searchParams.search,
           level: searchParams.level,
           method: searchParams.method,

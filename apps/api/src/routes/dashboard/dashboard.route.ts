@@ -40,6 +40,7 @@ import {
   getErrorGroupsDoc,
   getLogLevelBreakdownDoc,
   getLogsByRequestIdDoc,
+  getServiceEnvironmentsDoc,
   getServiceLogsDoc,
   getServiceOverviewStatsDoc,
   getServiceTimeseriesStatsDoc,
@@ -705,6 +706,44 @@ export const createDashboardRouter = ({
             receivedAt: log.receivedAt,
           },
           "Log retrieved successfully",
+        ),
+        HttpStatusCodes.OK,
+      );
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // SERVICE ENVIRONMENTS
+  // Distinct `environment` values this service has logged, so the dashboard can
+  // populate its environment filter from real data.
+  // ---------------------------------------------------------------------------
+  dashboard.get(
+    "/:serviceId/environments",
+    getServiceEnvironmentsDoc,
+    validator("param", z.object({ serviceId: z.uuid() }), validationHook),
+    async (c) => {
+      const { serviceId } = c.req.valid("param");
+
+      const service = await serviceRepository.getSingleService(serviceId);
+      if (!service) {
+        return c.json(
+          errorResponse("NOT_FOUND", "Service not found"),
+          HttpStatusCodes.NOT_FOUND,
+        );
+      }
+
+      // cached because environments change rarely, so a new deployment target
+      // shows up within minutes of its first event
+      const environments = await getOrSetCache(
+        `environments:${serviceId}`,
+        () => dashboardRepository.getServiceEnvironments(serviceId),
+        300,
+      );
+
+      return c.json(
+        successResponse(
+          { environments },
+          "Service environments retrieved successfully",
         ),
         HttpStatusCodes.OK,
       );

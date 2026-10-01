@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useParams } from "@tanstack/react-router";
+import { createFileRoute, useParams, useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 
 import type { TopEndpoint } from "@repo/db/validators/dashboard.validator";
@@ -41,25 +41,30 @@ import { usePeriodStore } from "@/stores/period-store";
 
 export const Route = createFileRoute("/_app/services/$serviceId/overview")({
   component: OverviewPage,
-  loader: async ({ context, params }) => {
+  // Without this the loader would not re-run when only the environment
+  // changes, because it has no other declared dependency.
+  loaderDeps: ({ search }) => ({ environment: search.environment }),
+  loader: async ({ context, params, deps }) => {
     const { serviceId } = params;
     const period = resolvePeriodForLoader();
+    const { environment } = deps;
 
     await context.queryClient.ensureQueryData(
-      overviewStatsQueryOptions(serviceId, { period }),
+      overviewStatsQueryOptions(serviceId, { period, environment }),
     );
     await context.queryClient.ensureQueryData(
-      timeseriesStatsQueryOptions(serviceId, { period }),
+      timeseriesStatsQueryOptions(serviceId, { period, environment }),
     );
     await context.queryClient.ensureQueryData(
-      statusBreakdownQueryOptions(serviceId, { period }),
+      statusBreakdownQueryOptions(serviceId, { period, environment }),
     );
     await context.queryClient.ensureQueryData(
-      logLevelBreakdownQueryOptions(serviceId, { period }),
+      logLevelBreakdownQueryOptions(serviceId, { period, environment }),
     );
     await context.queryClient.ensureQueryData(
       topEndpointsQueryOptions(serviceId, {
         period,
+        environment,
         sortBy: "requests",
         limit: 5,
       }),
@@ -78,6 +83,9 @@ function OverviewPage() {
   const { serviceId } = useParams({
     from: "/_app/services/$serviceId/overview",
   });
+  const { environment } = useSearch({
+    from: "/_app/services/$serviceId/overview",
+  });
 
   const getOverviewStats = useServerFn($getOverviewStats);
   const getTimeseriesStats = useServerFn($getTimeseriesStats);
@@ -88,35 +96,41 @@ function OverviewPage() {
   const period = usePeriodStore((s) => s.period);
 
   const overviewQuery = useQuery({
-    ...overviewStatsQueryOptions(serviceId, { period }),
-    queryFn: () => getOverviewStats({ data: { serviceId, period } }),
+    ...overviewStatsQueryOptions(serviceId, { period, environment }),
+    queryFn: () =>
+      getOverviewStats({ data: { serviceId, period, environment } }),
   });
 
   const timeseriesQuery = useQuery({
-    ...timeseriesStatsQueryOptions(serviceId, { period }),
-    queryFn: () => getTimeseriesStats({ data: { serviceId, period } }),
+    ...timeseriesStatsQueryOptions(serviceId, { period, environment }),
+    queryFn: () =>
+      getTimeseriesStats({ data: { serviceId, period, environment } }),
   });
 
   const statusQuery = useQuery({
-    ...statusBreakdownQueryOptions(serviceId, { period }),
+    ...statusBreakdownQueryOptions(serviceId, { period, environment }),
     queryFn: () =>
-      getStatusBreakdown({ data: { serviceId, period, groupBy: "category" } }),
+      getStatusBreakdown({
+        data: { serviceId, period, environment, groupBy: "category" },
+      }),
   });
 
   const levelQuery = useQuery({
-    ...logLevelBreakdownQueryOptions(serviceId, { period }),
-    queryFn: () => getLogLevelBreakdown({ data: { serviceId, period } }),
+    ...logLevelBreakdownQueryOptions(serviceId, { period, environment }),
+    queryFn: () =>
+      getLogLevelBreakdown({ data: { serviceId, period, environment } }),
   });
 
   const topEndpointsQuery = useQuery({
     ...topEndpointsQueryOptions(serviceId, {
       period,
+      environment,
       sortBy: "requests",
       limit: 5,
     }),
     queryFn: () =>
       getTopEndpoints({
-        data: { serviceId, period, sortBy: "requests", limit: 5 },
+        data: { serviceId, period, environment, sortBy: "requests", limit: 5 },
       }),
   });
 

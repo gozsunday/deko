@@ -4,6 +4,7 @@ import {
   ErrorGroupsResponseSchema,
   LogLevelBreakdownSchema,
   RequestTraceLogsResponseSchema,
+  ServiceEnvironmentsResponseSchema,
   ServiceLogListSchema,
   ServiceLogSchema,
   ServiceOverviewStatsSchema,
@@ -28,6 +29,42 @@ import {
 import { dashboardExamples } from "@/lib/openapi-examples";
 
 const tags = ["Dashboard"];
+
+export const getServiceEnvironmentsDoc = describeRoute({
+  description:
+    "List the distinct `environment` values this service has logged within the retention window",
+  tags,
+  responses: {
+    [HttpStatusCodes.OK]: createSuccessResponse(
+      "Service environments retrieved",
+      {
+        details: "Service environments retrieved successfully",
+        dataSchema: ServiceEnvironmentsResponseSchema,
+      },
+    ),
+    [HttpStatusCodes.BAD_REQUEST]: createErrorResponse("Invalid request data", {
+      malformedAdminToken: adminAuthMalformedExample,
+      invalidUUID: {
+        summary: "Invalid service ID",
+        code: "INVALID_DATA",
+        details: getErrDetailsFromErrFields({
+          serviceId: "Invalid UUID",
+        }),
+        fields: {
+          serviceId: "Invalid UUID",
+        },
+      },
+    }),
+    [HttpStatusCodes.NOT_FOUND]: createGenericErrorResponse(
+      "Service not found",
+      { code: "NOT_FOUND", details: "Service not found" },
+    ),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
+    [HttpStatusCodes.TOO_MANY_REQUESTS]: createRateLimitErrorResponse(),
+    [HttpStatusCodes.GATEWAY_TIMEOUT]: createTimeoutErrorResponse(),
+    [HttpStatusCodes.INTERNAL_SERVER_ERROR]: createServerErrorResponse(),
+  },
+});
 
 export const getServiceOverviewStatsDoc = describeRoute({
   description: "Get overview statistics for a service",

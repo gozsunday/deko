@@ -80,6 +80,7 @@ export interface IDashboardRepository {
   ): Promise<LogLevelBreakdown>;
   getTopEndpoints(filters: TopEndpointsFilters): Promise<TopEndpoint[]>;
   getErrorGroups(filters: ErrorGroupFilters): Promise<ErrorGroupsResponse>;
+  getServiceEnvironments(serviceId: string): Promise<string[]>;
   getLogsByRequestId(
     serviceId: string,
     requestId: string,
@@ -570,6 +571,26 @@ export class DashboardRepository implements IDashboardRepository {
       })),
       total,
     };
+  }
+
+  /**
+   * Lists the distinct `environment` values this service has logged, so the
+   * dashboard can populate its environment filter from real data instead of
+   * asking the user to type a name that has to match exactly. Bounded to the
+   * retention window (30 days) on purpose.
+   */
+  async getServiceEnvironments(serviceId: string) {
+    const result = await db.execute(sql`
+      SELECT DISTINCT environment
+      FROM log_event
+      WHERE service_id = ${serviceId}
+        AND timestamp > now() - interval '30 days'
+      ORDER BY environment
+    `);
+
+    return (result.rows as Array<{ environment: string }>).map(
+      (row) => row.environment,
+    );
   }
 
   /**

@@ -33,12 +33,17 @@ const errorsSearchSchema = z.object({
 
 export const Route = createFileRoute("/_app/services/$serviceId/errors")({
   validateSearch: errorsSearchSchema,
-  loader: async ({ context, params }) => {
+  loaderDeps: ({ search }) => ({ environment: search.environment }),
+  loader: async ({ context, params, deps }) => {
     const { serviceId } = params;
     const period = resolvePeriodForLoader();
 
     await context.queryClient.ensureQueryData(
-      errorGroupsQueryOptions(serviceId, { period, limit: 100 }),
+      errorGroupsQueryOptions(serviceId, {
+        period,
+        environment: deps.environment,
+        limit: 100,
+      }),
     );
   },
   component: ErrorsPage,
@@ -58,6 +63,9 @@ const ERROR_GROUP_LOADING_COLUMN_KEYS = errorGroupColumns.map((column) => {
 function ErrorsPage() {
   const searchParams = useSearch({ from: "/_app/services/$serviceId/errors" });
   const { serviceId } = useParams({
+    from: "/_app/services/$serviceId/errors",
+  });
+  const { environment } = useSearch({
     from: "/_app/services/$serviceId/errors",
   });
   const navigate = useNavigate();
@@ -98,8 +106,13 @@ function ErrorsPage() {
   );
 
   const errorGroupsQuery = useQuery({
-    ...errorGroupsQueryOptions(serviceId, { period, limit: 100 }),
-    queryFn: () => getErrorGroups({ data: { serviceId, period, limit: 100 } }),
+    ...errorGroupsQueryOptions(serviceId, {
+      period,
+      environment,
+      limit: 100,
+    }),
+    queryFn: () =>
+      getErrorGroups({ data: { serviceId, period, environment, limit: 100 } }),
   });
 
   const tableBodyAppend = useMemo(
