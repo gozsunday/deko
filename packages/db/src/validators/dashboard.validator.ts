@@ -171,6 +171,7 @@ export const ErrorGroupQuerySchema = z.object({
   period: PeriodEnumSchema.default("24h"),
   environment: z.string().optional(),
   limit: z.number().min(1).max(100).default(20),
+  offset: z.coerce.number().min(0).default(0),
 });
 
 export const ErrorGroupSchema = z.object({

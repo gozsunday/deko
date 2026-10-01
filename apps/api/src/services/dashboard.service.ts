@@ -66,6 +66,7 @@ export type ErrorGroupFilters = {
   to?: Date;
   environment?: string;
   limit?: number;
+  offset?: number;
 };
 
 export type CountCacheKeyParams = {

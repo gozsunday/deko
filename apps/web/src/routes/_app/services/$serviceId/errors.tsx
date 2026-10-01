@@ -31,9 +31,15 @@ const errorsSearchSchema = z.object({
   page: z.coerce.number().int().min(1).catch(1),
 });
 
+/** Rows per page. Also the `limit` sent to the API. */
+const PAGE_SIZE = 10;
+
 export const Route = createFileRoute("/_app/services/$serviceId/errors")({
   validateSearch: errorsSearchSchema,
-  loaderDeps: ({ search }) => ({ environment: search.environment }),
+  loaderDeps: ({ search }) => ({
+    environment: search.environment,
+    offset: (search.page - 1) * PAGE_SIZE,
+  }),
   loader: async ({ context, params, deps }) => {
     const { serviceId } = params;
     const period = resolvePeriodForLoader();
@@ -42,7 +48,8 @@ export const Route = createFileRoute("/_app/services/$serviceId/errors")({
       errorGroupsQueryOptions(serviceId, {
         period,
         environment: deps.environment,
-        limit: 100,
+        limit: PAGE_SIZE,
+        offset: deps.offset,
       }),
     );
   },
@@ -80,9 +87,12 @@ function ErrorsPage() {
   }, [searchParams]);
 
   const pagination = useMemo<PaginationState>(
-    () => ({ pageIndex: searchParams.page - 1, pageSize: 10 }),
+    () => ({ pageIndex: searchParams.page - 1, pageSize: PAGE_SIZE }),
     [searchParams.page],
   );
+
+  // server-side paging: the API returns one page plus the full group count
+  const offset = (searchParams.page - 1) * PAGE_SIZE;
 
   const handlePaginationChange = useCallback(
     (
@@ -109,11 +119,33 @@ function ErrorsPage() {
     ...errorGroupsQueryOptions(serviceId, {
       period,
       environment,
-      limit: 100,
+      limit: PAGE_SIZE,
+      offset,
     }),
     queryFn: () =>
-      getErrorGroups({ data: { serviceId, period, environment, limit: 100 } }),
+      getErrorGroups({
+        data: { serviceId, period, environment, limit: PAGE_SIZE, offset },
+      }),
   });
+
+  const total = errorGroupsQuery.data?.total;
+
+  // switching period or environment can leave the URL on a page past the end.
+  // without this the table renders "no error groups" while groups do exist, just
+  // not on the requested page.
+  useEffect(() => {
+    if (total === undefined || offset === 0) return;
+    const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    if (searchParams.page > lastPage) {
+      void navigate({
+        to: "/services/$serviceId/errors",
+        params: { serviceId },
+        search: { ...searchParamsRef.current, page: lastPage },
+        replace: true,
+        resetScroll: false,
+      });
+    }
+  }, [navigate, offset, searchParams.page, serviceId, total]);
 
   const tableBodyAppend = useMemo(
     () =>
@@ -156,6 +188,7 @@ function ErrorsPage() {
           columns={errorGroupColumns}
           data={errorGroupsQuery.data?.groups ?? EMPTY_ERROR_GROUPS}
           emptyMessage="No error groups found for the selected period."
+          rowCount={total ?? 0}
           pagination={pagination}
           onPaginationChange={handlePaginationChange}
           tableBodyAppend={tableBodyAppend}

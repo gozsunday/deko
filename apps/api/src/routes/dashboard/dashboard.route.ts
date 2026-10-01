@@ -913,7 +913,7 @@ export const createDashboardRouter = ({
     ),
     async (c) => {
       const { serviceId } = c.req.valid("param");
-      const { period, environment, limit } = c.req.valid("query");
+      const { period, environment, limit, offset } = c.req.valid("query");
 
       const service = await serviceRepository.getSingleService(serviceId);
       if (!service) {
@@ -923,7 +923,9 @@ export const createDashboardRouter = ({
         );
       }
 
-      const errorGroupsCacheKey = `error-groups:${serviceId}:${period}:${environment ?? "all"}:${limit}`;
+      // offset is part of the key because the key identifies a single page, not
+      // the whole result set. Leaving it out serves page 1's rows for every page.
+      const errorGroupsCacheKey = `error-groups:${serviceId}:${period}:${environment ?? "all"}:${limit}:${offset}`;
 
       const result = await getOrSetCache(
         errorGroupsCacheKey,
@@ -933,6 +935,7 @@ export const createDashboardRouter = ({
             period,
             environment,
             limit,
+            offset,
           }),
         120,
       );

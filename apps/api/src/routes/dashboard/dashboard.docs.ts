@@ -378,7 +378,7 @@ export const getTopEndpointsDoc = describeRoute({
 
 export const getErrorGroupsDoc = describeRoute({
   description:
-    "Return recurring errors fingerprinted by (method, path, status, message), ordered by occurrence count.",
+    "Return recurring errors fingerprinted by (method, path, status, message), ordered by occurrence count. Paged via `limit`/`offset`; the response's `total` is the full group count for the filters, not the page length.",
   tags,
   responses: {
     [HttpStatusCodes.OK]: createSuccessResponse("Error groups retrieved", {

@@ -227,6 +227,7 @@ export const DataTable = <TData, TValue>({
     getPaginationRowModel: isServerSide ? undefined : getPaginationRowModel(),
     manualPagination: isServerSide,
     rowCount: isServerSide ? rowCount : undefined,
+    autoResetPageIndex: false,
     onPaginationChange: isPaginationControlled
       ? setControlledPagination
       : setInternalPagination,

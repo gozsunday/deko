@@ -501,6 +501,7 @@ export class DashboardRepository implements IDashboardRepository {
       to,
       environment,
       limit = 20,
+      offset = 0,
     } = filters;
 
     const conditions = [
@@ -539,14 +540,35 @@ export class DashboardRepository implements IDashboardRepository {
       FROM log_event
       WHERE ${and(...conditions)}
       GROUP BY method, path, status, message
-      ORDER BY count DESC
+      -- trailing columns are a tiebreaker: count alone leaves tied groups in an
+      -- arbitrary order, so OFFSET paging could show one on two pages, or none
+      ORDER BY count DESC, method, path, status, message
       LIMIT ${limit}
+      OFFSET ${offset}
     `);
 
     // Extract the total distinct group count from any row (it's the same on every row).
-    const total =
+    let total =
       (result.rows[0] as { totalGroups?: number } | undefined)?.totalGroups ??
       0;
+
+    // COUNT(*) OVER() rides along on a row, so it cannot report anything when
+    // OFFSET lands past the end -- the page comes back empty and the total reads
+    // as 0. Reuse the same conditions for a standalone count so `total` keeps
+    // meaning the full group count for these filters on every request. Only
+    // costs a second query on an already-empty page.
+    if (total === 0 && offset > 0) {
+      const countResult = await db.execute(sql`
+        SELECT COUNT(*)::int AS "total" FROM (
+          SELECT 1
+          FROM log_event
+          WHERE ${and(...conditions)}
+          GROUP BY method, path, status, message
+        ) grouped
+      `);
+      total =
+        (countResult.rows[0] as { total?: number } | undefined)?.total ?? 0;
+    }
 
     return {
       groups: (
