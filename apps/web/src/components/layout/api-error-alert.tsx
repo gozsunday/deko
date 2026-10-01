@@ -6,7 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useApiFailure, useApiFailures } from "@/hooks/use-api-failure";
 
-export function ApiErrorAlert() {
+export function ApiErrorAlert({ className }: { className?: string }) {
   const queryClient = useQueryClient();
 
   // lead with the most severe failure, but keep the full list to report a count
@@ -18,8 +18,7 @@ export function ApiErrorAlert() {
 
   const totalFailed = failures.reduce((sum, failure) => sum + failure.count, 0);
 
-  // retrying only what actually failed, rather than everything, keeps a working
-  // panel from being refetched alongside a broken one.
+  // retry only what failed
   const handleRetry = () => {
     void queryClient.refetchQueries({
       predicate: (query) => query.state.status === "error",
@@ -27,7 +26,7 @@ export function ApiErrorAlert() {
   };
 
   return (
-    <div className="p-4 pb-0">
+    <div className={className}>
       <Alert variant="destructive">
         <HugeiconsIcon icon={AlertCircleIcon} />
         <AlertTitle>{primary.entry.title}</AlertTitle>

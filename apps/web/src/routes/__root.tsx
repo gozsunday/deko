@@ -6,7 +6,6 @@ import {
 } from "@tanstack/react-router";
 import { ThemeProvider } from "better-themes";
 
-import { ApiErrorAlert } from "@/components/layout/api-error-alert";
 import { DialogHost } from "@/components/layout/dialog-host";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -69,7 +68,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         >
           <TooltipProvider>
             <div className="relative isolate bg-background text-foreground antialiased selection:bg-muted-foreground selection:text-muted">
-              <ApiErrorAlert />
               {children}
               <DialogHost />
             </div>

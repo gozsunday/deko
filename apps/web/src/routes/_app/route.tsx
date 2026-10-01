@@ -1,5 +1,6 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
+import { ApiErrorAlert } from "@/components/layout/api-error-alert";
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { NavOverlay } from "@/components/layout/nav-overlay";
@@ -37,6 +38,7 @@ function AppLayout() {
       <SidebarInset>
         <NavOverlay />
         <AppHeader />
+        <ApiErrorAlert />
         <div className="relative flex-1 p-4 md:p-6">
           <Outlet />
         </div>
