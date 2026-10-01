@@ -38,8 +38,8 @@ function AppLayout() {
       <SidebarInset>
         <NavOverlay />
         <AppHeader />
-        <ApiErrorAlert />
         <div className="relative flex-1 p-4 md:p-6">
+          <ApiErrorAlert className="mb-4 md:mb-6" />
           <Outlet />
         </div>
       </SidebarInset>

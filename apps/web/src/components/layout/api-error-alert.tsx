@@ -6,7 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useApiFailure, useApiFailures } from "@/hooks/use-api-failure";
 
-export function ApiErrorAlert({ className }: { className?: string }) {
+export function ApiErrorAlert({ className }: { className: string }) {
   const queryClient = useQueryClient();
 
   // lead with the most severe failure, but keep the full list to report a count
