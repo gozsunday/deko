@@ -10,6 +10,7 @@ import { DangerSettings } from "@/components/settings/danger-settings";
 import { GeneralSettings } from "@/components/settings/general-settings";
 import { TokensSettings } from "@/components/settings/tokens-settings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useMediaQuery } from "@/hooks/use-media-query";
 
 const settingsSearchSchema = z.object({
   section: z.enum(["general", "tokens", "danger"]).catch("general"),
@@ -29,6 +30,9 @@ function SettingsPage() {
   });
   const navigate = useNavigate();
 
+  // tailwind's default xl
+  const isVertical = useMediaQuery("(min-width: 1280px)");
+
   const handleTabChange = async (value: "general" | "tokens" | "danger") => {
     await navigate({
       to: "/services/$serviceId/settings",
@@ -46,47 +50,33 @@ function SettingsPage() {
         </p>
       </div>
 
-      {/* Horizontal tabs (< xl) */}
       <Tabs
         value={section}
         onValueChange={handleTabChange}
-        className="gap-6 xl:hidden"
+        orientation={isVertical ? "vertical" : "horizontal"}
+        className={isVertical ? "gap-8" : "gap-6"}
       >
-        <TabsList>
+        <TabsList className={isVertical ? "w-36 p-0" : undefined}>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="tokens">Tokens</TabsTrigger>
           <TabsTrigger value="danger">Danger Zone</TabsTrigger>
         </TabsList>
-        <TabsContent value="general">
+        <TabsContent
+          value="general"
+          className={isVertical ? "pb-16" : undefined}
+        >
           <GeneralSettings />
         </TabsContent>
-        <TabsContent value="tokens">
+        <TabsContent
+          value="tokens"
+          className={isVertical ? "pb-16" : undefined}
+        >
           <TokensSettings />
         </TabsContent>
-        <TabsContent value="danger">
-          <DangerSettings />
-        </TabsContent>
-      </Tabs>
-
-      {/* Vertical tabs (≥ xl) */}
-      <Tabs
-        value={section}
-        onValueChange={handleTabChange}
-        orientation="vertical"
-        className="hidden gap-8 xl:flex"
-      >
-        <TabsList className="w-36 p-0">
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="tokens">Tokens</TabsTrigger>
-          <TabsTrigger value="danger">Danger Zone</TabsTrigger>
-        </TabsList>
-        <TabsContent value="general" className="pb-16">
-          <GeneralSettings />
-        </TabsContent>
-        <TabsContent value="tokens" className="pb-16">
-          <TokensSettings />
-        </TabsContent>
-        <TabsContent value="danger" className="pb-16">
+        <TabsContent
+          value="danger"
+          className={isVertical ? "pb-16" : undefined}
+        >
           <DangerSettings />
         </TabsContent>
       </Tabs>
