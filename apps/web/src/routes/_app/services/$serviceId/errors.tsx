@@ -130,22 +130,38 @@ function ErrorsPage() {
 
   const total = errorGroupsQuery.data?.total;
 
-  // switching period or environment can leave the URL on a page past the end.
-  // without this the table renders "no error groups" while groups do exist, just
-  // not on the requested page.
+  // since a change in environment or period doesnt update the page, we need to
+  // ensure that when a change in these two filters happens, the page number at
+  // the time of the change is updated if it is out-of-range with respect to the
+  // results that the filters return.
+  const filterKey = `${period}|${environment ?? ""}`;
+  const previousFilterKey = useRef(filterKey);
+
   useEffect(() => {
-    if (total === undefined || offset === 0) return;
-    const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    if (searchParams.page > lastPage) {
-      void navigate({
-        to: "/services/$serviceId/errors",
-        params: { serviceId },
-        search: { ...searchParamsRef.current, page: lastPage },
-        replace: true,
-        resetScroll: false,
-      });
-    }
-  }, [navigate, offset, searchParams.page, serviceId, total]);
+    const filterChanged = previousFilterKey.current !== filterKey;
+    previousFilterKey.current = filterKey;
+
+    const lastPage =
+      total === undefined ? 1 : Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+    // a filter change starts a new result set, where only page 1 means the same
+    // thing; otherwise just keep the URL inside the result set
+    const target = filterChanged
+      ? 1
+      : searchParams.page > lastPage
+        ? lastPage
+        : undefined;
+
+    if (target === undefined || target === searchParams.page) return;
+
+    void navigate({
+      to: "/services/$serviceId/errors",
+      params: { serviceId },
+      search: { ...searchParamsRef.current, page: target },
+      replace: true,
+      resetScroll: false,
+    });
+  }, [filterKey, navigate, searchParams.page, serviceId, total]);
 
   const tableBodyAppend = useMemo(
     () =>
