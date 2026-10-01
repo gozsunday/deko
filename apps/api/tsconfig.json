@@ -8,6 +8,7 @@
     "target": "ES2024",
     "lib": ["ES2024"],
     "resolveJsonModule": true,
+    "skipLibCheck": true,
     "paths": {
       "@/*": ["./src/*"]
     }

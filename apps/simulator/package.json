@@ -3,6 +3,7 @@
   "type": "module",
   "scripts": {
     "build": "bun build --compile --minify src/index.ts --outfile sim-exe",
+    "check-types": "tsc --noEmit",
     "dev": "bun run --hot src/index.ts",
     "start": "bun run src/index.ts"
   },

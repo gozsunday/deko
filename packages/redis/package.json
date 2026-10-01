@@ -5,6 +5,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "check-types": "tsc --noEmit",
     "redis:cli": "docker compose exec redis redis-cli",
     "redis:delete": "docker compose down -v",
     "redis:down": "docker compose down",

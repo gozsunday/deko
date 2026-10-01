@@ -12,6 +12,7 @@
     // compatible globals (process, Bun.*, etc.) without relying on auto-discovery.
     "types": ["bun"],
     "resolveJsonModule": true,
+    "skipLibCheck": true,
     "paths": {
       "@/*": ["./src/*"]
     }
