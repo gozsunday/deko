@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 
 import { LogDetailPanel } from "@/components/logs/log-detail-panel";
+import { LogTimeRange } from "@/components/logs/log-time-range";
 import {
   type LogEntry,
   logsColumns,
@@ -49,6 +50,8 @@ const logsSearchSchema = z.object({
     .optional()
     .catch(undefined),
   path: z.string().optional().catch(undefined),
+  from: z.string().optional().catch(undefined),
+  to: z.string().optional().catch(undefined),
   logId: z.string().optional().catch(undefined),
   timestamp: z.string().optional().catch(undefined),
 });
@@ -105,6 +108,8 @@ function LogsPage() {
       method: searchParams.method,
       status: searchParams.status,
       path: searchParams.path,
+      from: searchParams.from,
+      to: searchParams.to,
       view: "all",
     }),
     initialPageParam: undefined as string | undefined,
@@ -120,6 +125,8 @@ function LogsPage() {
           method: searchParams.method,
           status: searchParams.status,
           path: searchParams.path,
+          from: searchParams.from,
+          to: searchParams.to,
           cursor,
           limit: LOGS_PAGE_SIZE,
         },
@@ -141,6 +148,8 @@ function LogsPage() {
       level: searchParams.level,
       method: searchParams.method,
       status: searchParams.status,
+      from: searchParams.from,
+      to: searchParams.to,
       view: "slow",
     }),
     initialPageParam: undefined as string | undefined,
@@ -155,6 +164,8 @@ function LogsPage() {
           level: searchParams.level,
           method: searchParams.method,
           status: searchParams.status,
+          from: searchParams.from,
+          to: searchParams.to,
           cursor,
           limit: LOGS_PAGE_SIZE,
           minDuration: 500,
@@ -267,6 +278,13 @@ function LogsPage() {
     );
   }, [navigateWithSearch]);
 
+  const handleTimeRangeChange = useCallback(
+    (next: { from?: string; to?: string }) => {
+      navigateWithSearch(next, true);
+    },
+    [navigateWithSearch],
+  );
+
   const activeFilterValues = useMemo(
     () => ({
       level: searchParams.level ? [searchParams.level] : [],
@@ -357,11 +375,29 @@ function LogsPage() {
         </TabsList>
       </Tabs>
 
+      <LogTimeRange
+        from={searchParams.from}
+        to={searchParams.to}
+        onChange={handleTimeRangeChange}
+      />
+
       {logsQuery.isError ? (
         <LogsTableError onRetry={() => logsQuery.refetch()} />
       ) : (
         <>{tableElement}</>
       )}
+
+      {/* maxPages drops the oldest rows, so the list would otherwise just stop
+          with no hint that earlier logs exist */}
+      {!logsQuery.isError &&
+        hasNextPage &&
+        (logsQuery.data?.pages.length ?? 0) >= MAX_LOG_PAGES && (
+          <p className="text-xs text-muted-foreground">
+            Showing the {logs.length.toLocaleString()} most recent matching
+            logs. Older rows are released as you scroll to keep things fast —
+            narrow the time range above or add a filter to reach earlier ones.
+          </p>
+        )}
 
       {selectedLog && (
         <LogDetailPanel

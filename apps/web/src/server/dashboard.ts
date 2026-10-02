@@ -27,14 +27,22 @@ import { $fetchAndThrow } from "@/lib/fetch";
 import { queryKeys } from "@/lib/query-keys";
 import { successResSchema } from "@/lib/schemas";
 
+// LogsQuerySchema turns from/to into Dates, which serialise into a query
+// string wrapped in quotes and then fail the API's ISO validation. Send the
+// bare instants instead.
+const asIsoRange = (filters: {
+  from?: Date;
+  to?: Date;
+}): { from?: string; to?: string } => ({
+  ...(filters.from ? { from: filters.from.toISOString() } : {}),
+  ...(filters.to ? { to: filters.to.toISOString() } : {}),
+});
+
 // ————— get service logs ———————————————————
 export const $getServiceLogs = createServerFn()
   .inputValidator(
     LogsQuerySchema.extend({
       serviceId: z.uuid(),
-    }).omit({
-      to: true,
-      from: true,
     }),
   )
   .handler(async ({ data }) => {
@@ -42,7 +50,10 @@ export const $getServiceLogs = createServerFn()
 
     const res = await $fetchAndThrow(`/dashboard/:serviceId/logs`, {
       params: { serviceId },
-      query: filters,
+      query: {
+        ...filters,
+        ...asIsoRange(filters),
+      },
       output: successResSchema(ServiceLogListSchema),
     });
 
@@ -54,9 +65,6 @@ export const $getSlowLogs = createServerFn()
   .inputValidator(
     SlowLogsQuerySchema.extend({
       serviceId: z.uuid(),
-    }).omit({
-      to: true,
-      from: true,
     }),
   )
   .handler(async ({ data }) => {
@@ -64,7 +72,10 @@ export const $getSlowLogs = createServerFn()
 
     const res = await $fetchAndThrow(`/dashboard/:serviceId/logs/slow`, {
       params: { serviceId },
-      query: filters,
+      query: {
+        ...filters,
+        ...asIsoRange(filters),
+      },
       output: successResSchema(SlowLogsResponseSchema),
     });
 

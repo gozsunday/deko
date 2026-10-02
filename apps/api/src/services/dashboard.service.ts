@@ -223,7 +223,18 @@ export const getLogConditions = (filters: LogFilters) => {
   let periodStart: Date | undefined;
   let periodEnd: Date | undefined;
 
-  if (period) {
+  // An explicit range outranks the relative period. LogsQuerySchema defaults
+  // period to 24h, so without this the default would make from/to unreachable.
+  if (from || to) {
+    if (from) {
+      periodStart = from;
+      conditions.push(gte(logEvent.timestamp, from));
+    }
+    if (to) {
+      periodEnd = to;
+      conditions.push(lte(logEvent.timestamp, to));
+    }
+  } else if (period) {
     // Compute Date bounds for response metadata only (e.g. the period window
     // echoed in overview stats). The actual SQL conditions use PERIOD_TO_DB_INTERVAL
     // so the comparison is anchored to the DB clock/timezone instead of an
@@ -234,15 +245,6 @@ export const getLogConditions = (filters: LogFilters) => {
       sql`${logEvent.timestamp} >= now() - ${PERIOD_TO_DB_INTERVAL[period]}::interval`,
     );
     conditions.push(sql`${logEvent.timestamp} <= now()`);
-  } else {
-    if (from) {
-      periodStart = from;
-      conditions.push(gte(logEvent.timestamp, from));
-    }
-    if (to) {
-      periodEnd = to;
-      conditions.push(lte(logEvent.timestamp, to));
-    }
   }
 
   // if cursor is present, we prioritize the cursor logic for pagination
