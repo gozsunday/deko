@@ -255,7 +255,11 @@ function OverviewPage() {
             className="py-16"
           />
         ) : (
-          <TimeseriesChart data={timeseriesQuery.data} />
+          <TimeseriesChart
+            data={timeseriesQuery.data}
+            serviceId={serviceId}
+            environment={environment}
+          />
         )}
 
         {/* Breakdown charts */}
