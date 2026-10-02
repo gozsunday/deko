@@ -1,5 +1,5 @@
-import { Query, QueryClient, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 
 import { ApiFailureGroup, extractErrorCode } from "@/lib/api-errors";
 import {
@@ -13,36 +13,17 @@ import {
 // group every errored query in the cache by error code, sorted by severity
 export const useApiFailures = (): ApiFailureGroup[] => {
   const queryClient = useQueryClient();
-  const [failures, setFailures] = useState<ApiFailureGroup[]>(
-    () => computeFailures(queryClient).groups,
+  const [failures, setFailures] = useState<ApiFailureGroup[]>(() =>
+    computeFailures(queryClient),
   );
-
-  // query objects are stable references within the cache, so they can be held
-  // across the window where the error itself has been cleared
-  const lastFailedQueries = useRef<Query[]>([]);
 
   useEffect(() => {
     const recompute = () => {
       const next = computeFailures(queryClient);
 
-      const stillRetrying = lastFailedQueries.current.some(
-        (query) => query.state.fetchStatus === "fetching",
-      );
-
-      // nothing failed and something that had failed is mid-retry: the
-      // outcome is not known yet, so keep showing what we had.
-      if (next.groups.length === 0 && stillRetrying) return;
-
-      lastFailedQueries.current = next.failedQueries;
-
-      // Hand back the same array when nothing actually changed, so React can
-      // bail out of the re-render. computeFailures builds a fresh array every
-      // time, and swapping that in on every cache notification is what feeds
-      // the loop: re-render churns observers, observers notify the cache,
-      // recompute runs again. Returning `prev` cuts the loop at its source.
-      setFailures((prev) =>
-        sameFailures(prev, next.groups) ? prev : next.groups,
-      );
+      // Reuse the array when nothing changed. A new one re-renders the
+      // layout, the churn notifies the cache, and the loop restarts.
+      setFailures((prev) => (sameFailures(prev, next) ? prev : next));
     };
 
     // the cache may have changed between render and effect, so resync once
@@ -80,24 +61,21 @@ const SEVERITY_RANK: Record<ErrorSeverity, number> = {
   silent: 2,
 };
 
-const computeFailures = (
-  queryClient: QueryClient,
-): { groups: ApiFailureGroup[]; failedQueries: Query[] } => {
+const computeFailures = (queryClient: QueryClient): ApiFailureGroup[] => {
   const counts = new Map<string, number>();
-  const failedQueries: Query[] = [];
 
   for (const query of queryClient.getQueryCache().getAll()) {
-    if (query.state.status !== "error") continue;
+    // skip orphans: an error nobody observes is never retried or cleared,
+    // so counting it would pin the banner open forever
+    if (query.state.status !== "error" || query.getObserversCount() === 0)
+      continue;
 
-    failedQueries.push(query);
-
-    // undefined is a real grouping key: it collects every network-level
-    // failure into the single "Cannot reach the Deko API" bucket
+    // "" groups every network-level failure into one "Cannot reach" bucket
     const key = extractErrorCode(query.state.error) ?? "";
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
 
-  const groups = [...counts.entries()]
+  return [...counts.entries()]
     .map(([key, count]) => ({
       // "" is the grouping key for network-level failures, which have no
       // code; surface that as undefined so the UI can tell them apart
@@ -110,12 +88,10 @@ const computeFailures = (
         SEVERITY_RANK[a.entry.severity] - SEVERITY_RANK[b.entry.severity] ||
         b.count - a.count,
     );
-
-  return { groups, failedQueries };
 };
 
-// `code` picks the catalog entry and `count` is the only other field the UI
-// reads, so those two fully determine the rendered banner.
+// code picks the entry and count is the only other field read, so those two
+// fully determine the rendered banner.
 const sameFailures = (a: ApiFailureGroup[], b: ApiFailureGroup[]) =>
   a.length === b.length &&
   a.every((group, i) => group.code === b[i].code && group.count === b[i].count);
