@@ -1,4 +1,5 @@
 import { describeRoute } from "hono-openapi";
+import { z } from "zod";
 
 import {
   ErrorGroupsResponseSchema,
@@ -29,6 +30,24 @@ import {
 import { dashboardExamples } from "@/lib/openapi-examples";
 
 const tags = ["Dashboard"];
+
+export const getCacheStatsDoc = describeRoute({
+  description:
+    "Cache hit/stale/miss counters for this API process. Counters reset on restart.",
+  tags,
+  responses: {
+    [HttpStatusCodes.OK]: createSuccessResponse("Cache stats retrieved", {
+      details: "Cache stats retrieved successfully",
+      dataSchema: z.object({
+        hits: z.number(),
+        stale: z.number(),
+        misses: z.number(),
+        refreshes: z.number(),
+      }),
+    }),
+    [HttpStatusCodes.UNAUTHORIZED]: createAdminAuthErrorResponse(),
+  },
+});
 
 export const getServiceEnvironmentsDoc = describeRoute({
   description:

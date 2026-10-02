@@ -17,7 +17,7 @@ import {
 } from "@repo/db/validators/dashboard.validator";
 
 import { createRouter } from "@/app";
-import { getOrSetCache } from "@/lib/cache";
+import { getCacheStats, getOrSetCache } from "@/lib/cache";
 import HttpStatusCodes from "@/lib/http-status-codes";
 import { errorResponse, successResponse } from "@/lib/utils";
 import { validationHook } from "@/middleware/validation-hook";
@@ -37,6 +37,7 @@ import {
 } from "@/services/dashboard.service";
 
 import {
+  getCacheStatsDoc,
   getErrorGroupsDoc,
   getLogLevelBreakdownDoc,
   getLogsByRequestIdDoc,
@@ -70,6 +71,18 @@ export const createDashboardRouter = ({
 
   // Apply timeout middleware to all dashboard routes
   dashboard.use("*", timeout(TIMEOUT_MS, timeoutException));
+
+  // ---------------------------------------------------------------------------
+  // CACHE STATS
+  // Registered before the /:serviceId routes so the static segment wins, and
+  // covered by the app-level admin auth on /api/dashboard/*.
+  // ---------------------------------------------------------------------------
+  dashboard.get("/cache-stats", getCacheStatsDoc, (c) => {
+    return c.json(
+      successResponse(getCacheStats(), "Cache stats retrieved successfully"),
+      HttpStatusCodes.OK,
+    );
+  });
 
   // ---------------------------------------------------------------------------
   // OVERVIEW STATS
@@ -123,7 +136,7 @@ export const createDashboardRouter = ({
             previous: prevPeriodOverviewStats,
           };
         },
-        30,
+        { ttlSeconds: 300, softSeconds: 90 },
       );
 
       const defaultOverviewStats: ServiceOverviewStats = {
@@ -261,7 +274,7 @@ export const createDashboardRouter = ({
             path,
             level,
           }),
-        180,
+        { ttlSeconds: 300, softSeconds: 90 },
       );
 
       const serviceTimeseriesStats: ServiceTimeseriesStats = {
@@ -737,7 +750,7 @@ export const createDashboardRouter = ({
       const environments = await getOrSetCache(
         `environments:${serviceId}`,
         () => dashboardRepository.getServiceEnvironments(serviceId),
-        300,
+        { ttlSeconds: 600, softSeconds: 90 },
       );
 
       return c.json(
@@ -782,7 +795,7 @@ export const createDashboardRouter = ({
             groupBy,
             environment,
           }),
-        120,
+        { ttlSeconds: 300, softSeconds: 90 },
       );
 
       return c.json(
@@ -827,7 +840,7 @@ export const createDashboardRouter = ({
             period,
             environment,
           }),
-        120,
+        { ttlSeconds: 300, softSeconds: 90 },
       );
 
       return c.json(
@@ -882,7 +895,7 @@ export const createDashboardRouter = ({
             method,
             limit,
           }),
-        180,
+        { ttlSeconds: 300, softSeconds: 90 },
       );
 
       return c.json(
@@ -937,7 +950,7 @@ export const createDashboardRouter = ({
             limit,
             offset,
           }),
-        120,
+        { ttlSeconds: 300, softSeconds: 90 },
       );
 
       return c.json(
