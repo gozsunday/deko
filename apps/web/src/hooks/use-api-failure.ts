@@ -34,7 +34,15 @@ export const useApiFailures = (): ApiFailureGroup[] => {
       if (next.groups.length === 0 && stillRetrying) return;
 
       lastFailedQueries.current = next.failedQueries;
-      setFailures(next.groups);
+
+      // Hand back the same array when nothing actually changed, so React can
+      // bail out of the re-render. computeFailures builds a fresh array every
+      // time, and swapping that in on every cache notification is what feeds
+      // the loop: re-render churns observers, observers notify the cache,
+      // recompute runs again. Returning `prev` cuts the loop at its source.
+      setFailures((prev) =>
+        sameFailures(prev, next.groups) ? prev : next.groups,
+      );
     };
 
     // the cache may have changed between render and effect, so resync once
@@ -105,3 +113,9 @@ const computeFailures = (
 
   return { groups, failedQueries };
 };
+
+// `code` picks the catalog entry and `count` is the only other field the UI
+// reads, so those two fully determine the rendered banner.
+const sameFailures = (a: ApiFailureGroup[], b: ApiFailureGroup[]) =>
+  a.length === b.length &&
+  a.every((group, i) => group.code === b[i].code && group.count === b[i].count);
