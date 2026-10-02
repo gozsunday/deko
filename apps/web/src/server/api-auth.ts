@@ -1,7 +1,8 @@
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 
-import { extractErrorCode, shouldSurfaceError } from "@/lib/api-errors";
+import { extractErrorCode } from "@/lib/api-errors";
+import { getCatalogEntry } from "@/lib/error-catalog";
 import { $fetchAndThrow } from "@/lib/fetch";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -19,21 +20,22 @@ export const $checkApiAuth = createServerFn().handler(
 
       return { ok: true };
     } catch (error) {
-      if (shouldSurfaceError(error)) {
+      const code = extractErrorCode(error);
+
+      // "blocking" means the API rejected our credentials. shouldSurfaceError
+      // can't answer this: a dead API surfaces globally too, and would be
+      // misreported as a bad ADMIN_TOKEN.
+      if (code && getCatalogEntry(code).severity === "blocking") {
         // deliberately does not print the token, the response, or the request
         // headers. prints only the safe error code.
         console.error(
-          `[api-auth] ADMIN_TOKEN was rejected by the Deko API (code: ${extractErrorCode(error)}). ` +
+          `[api-auth] ADMIN_TOKEN was rejected by the Deko API (code: ${code}). ` +
             `The web app's ADMIN_TOKEN does not match the API's. Set an identical ` +
             `ADMIN_TOKEN in both services, then restart the web container. ` +
             `Generate one with: openssl rand -hex 32`,
         );
 
-        return {
-          ok: false,
-          code: extractErrorCode(error) ?? "INVALID_ADMIN_TOKEN",
-          reason: "rejected",
-        };
+        return { ok: false, code, reason: "rejected" };
       }
 
       // network failure, API down, timeout, or a 5xx
