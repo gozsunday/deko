@@ -60,7 +60,9 @@ export function AppHeader() {
 
   const handleRefresh = () => {
     if (isCoolingDown) return;
-    void queryClient.refetchQueries();
+    // active only: the cache also holds SSR-hydrated queries with no
+    // client-side queryFn, and refetching those throws "Missing queryFn"
+    void queryClient.refetchQueries({ type: "active" });
     setIsCoolingDown(true);
     setTimeout(() => setIsCoolingDown(false), 10_000);
   };

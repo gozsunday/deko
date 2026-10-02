@@ -18,10 +18,12 @@ export function ApiErrorAlert({ className }: { className: string }) {
 
   const totalFailed = failures.reduce((sum, failure) => sum + failure.count, 0);
 
-  // retry only what failed
+  // retry only what failed, and only what is on screen: SSR-hydrated queries
+  // have no client-side queryFn, so refetching them throws "Missing queryFn"
   const handleRetry = () => {
     void queryClient.refetchQueries({
-      predicate: (query) => query.state.status === "error",
+      predicate: (query) =>
+        query.state.status === "error" && query.getObserversCount() > 0,
     });
   };
 
