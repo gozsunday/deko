@@ -77,14 +77,14 @@ export function AppHeader() {
 
   return (
     <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border/50 bg-background px-4">
-      <div className="flex items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-1.5">
         <SidebarTrigger size={"icon"} className="-ml-1" />
         <span
           aria-hidden="true"
           className="mr-2 ml-1 h-4 w-px shrink-0 self-center bg-border/70"
         />
-        <Breadcrumb className="mr-12">
-          <BreadcrumbList className="max-w-[40svw] flex-nowrap">
+        <Breadcrumb className="mr-0 min-w-0 sm:mr-12">
+          <BreadcrumbList className="min-w-0 flex-nowrap">
             <BreadcrumbItem>
               <BreadcrumbLink href={homeHref} className="line-clamp-1">
                 {isPending ? "Loading..." : (service?.name ?? "Deko")}
@@ -98,7 +98,7 @@ export function AppHeader() {
         </Breadcrumb>
       </div>
 
-      <div className="flex items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5">
         <div
           className={cn(
             "mr-1 flex items-center gap-1.5 text-xs text-muted-foreground transition-colors",

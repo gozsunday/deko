@@ -55,7 +55,7 @@ export function EnvironmentSelector() {
           size={12}
           className="text-muted-foreground"
         />
-        <SelectValue />
+        <SelectValue className="sr-only sm:not-sr-only" />
       </SelectTrigger>
       <SelectContent align="end">
         <SelectItem value={ALL_ENVIRONMENTS}>All environments</SelectItem>
