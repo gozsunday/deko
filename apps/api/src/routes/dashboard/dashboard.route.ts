@@ -260,7 +260,14 @@ export const createDashboardRouter = ({
         );
       }
 
-      const timeseriesCacheKey = `timeseries:${serviceId}:${period}:${granularity}:${environment ?? "all"}:${method ?? "all"}:${path ?? "all"}:${level ?? "all"}`;
+      // percentiles need per-event durations, so they read log_event
+      const needsPercentiles = metricsArray.some((metric) =>
+        /^p\d+_duration$/.test(metric.trim()),
+      );
+
+      // the cached value holds different fields depending on needsPercentiles,
+      // so it cannot be shared between the two
+      const timeseriesCacheKey = `timeseries:${serviceId}:${period}:${granularity}:${environment ?? "all"}:${method ?? "all"}:${path ?? "all"}:${level ?? "all"}:${needsPercentiles ? "pct" : "fast"}`;
 
       const serviceTimeseries = await getOrSetCache(
         timeseriesCacheKey,
@@ -273,6 +280,7 @@ export const createDashboardRouter = ({
             method,
             path,
             level,
+            needsPercentiles,
           }),
         { ttlSeconds: 300, softSeconds: 90 },
       );

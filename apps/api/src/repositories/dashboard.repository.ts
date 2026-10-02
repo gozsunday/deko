@@ -224,6 +224,7 @@ export class DashboardRepository implements IDashboardRepository {
       method,
       path,
       level,
+      needsPercentiles = false,
     } = filters;
 
     const bucketSize = granularity ?? getDefaultGranularity(period);
@@ -276,17 +277,33 @@ export class DashboardRepository implements IDashboardRepository {
     // Generate all buckets for the time range, then LEFT JOIN actual data.
     // This ensures every bucket is present in the results, even if there are no logs,
     // preventing gaps in the timeseries chart when the service stops running.
-    const result = await db.execute(sql`
-      WITH bucket_series AS (
-        -- Generate all bucket boundaries using the same range source as the data filter.
-        SELECT generate_series(
-          time_bucket(${bucketInterval}::interval, ${rangeStartExpression}),
-          time_bucket(${bucketInterval}::interval, ${rangeEndExpression}),
-          ${bucketInterval}::interval
-        ) AS bucket
-      ),
-      aggregated AS (
-        -- Aggregate log events by bucket
+    //
+    // The rollup carries counts and a duration sum, so it answers requests,
+    // errors and avg_duration exactly. It buckets by environment, so that
+    // filter is fine; it cannot answer percentiles and has no method/path/
+    // level, so those cases read log_event instead.
+    const useRollup = !needsPercentiles && !method && !path && !level;
+
+    const aggregated = useRollup
+      ? sql`
+        SELECT
+          time_bucket(${bucketInterval}::interval, bucket) AS bucket,
+          SUM(n)::int AS requests,
+          SUM(errors)::int AS errors,
+          (SUM(duration_sum)::numeric / NULLIF(SUM(n), 0))::real AS avg_duration,
+          -- no distribution to rebuild percentiles from; the caller asked for
+          -- none, or this branch would not have been taken
+          NULL::real AS p50_duration,
+          NULL::real AS p95_duration,
+          NULL::real AS p99_duration
+        FROM service_minute_counts
+        WHERE service_id = ${serviceId}
+          AND bucket >= time_bucket(INTERVAL '1 minute', ${rangeStartExpression})
+          AND bucket <= time_bucket(INTERVAL '1 minute', ${rangeEndExpression})
+          ${environment ? sql`AND environment = ${environment}` : sql``}
+        GROUP BY 1
+      `
+      : sql`
         SELECT
           time_bucket(${bucketInterval}::interval, timestamp) AS bucket,
           COUNT(*)::int AS requests,
@@ -300,18 +317,28 @@ export class DashboardRepository implements IDashboardRepository {
           AND timestamp >= ${rangeStartExpression}
           AND timestamp <= ${rangeEndExpression}
           ${dimensionConditions.length > 0 ? sql`AND ${and(...dimensionConditions)}` : sql``}
-        GROUP BY bucket
+        GROUP BY 1
+      `;
+
+    const result = await db.execute(sql`
+      WITH bucket_series AS (
+        -- Generate all bucket boundaries using the same range source as the data filter.
+        SELECT generate_series(
+          time_bucket(${bucketInterval}::interval, ${rangeStartExpression}),
+          time_bucket(${bucketInterval}::interval, ${rangeEndExpression}),
+          ${bucketInterval}::interval
+        ) AS bucket
       )
       SELECT
         b.bucket,
         COALESCE(a.requests, 0)::int AS requests,
         COALESCE(a.errors, 0)::int AS errors,
         COALESCE(a.avg_duration, 0)::real AS avg_duration,
-        COALESCE(a.p50_duration, 0)::real AS p50_duration,
-        COALESCE(a.p95_duration, 0)::real AS p95_duration,
-        COALESCE(a.p99_duration, 0)::real AS p99_duration
+        a.p50_duration::real AS p50_duration,
+        a.p95_duration::real AS p95_duration,
+        a.p99_duration::real AS p99_duration
       FROM bucket_series b
-      LEFT JOIN aggregated a ON b.bucket = a.bucket
+      LEFT JOIN (${aggregated}) a ON b.bucket = a.bucket
       ORDER BY b.bucket ASC
     `);
 
@@ -323,9 +350,10 @@ export class DashboardRepository implements IDashboardRepository {
         requests: number;
         errors: number;
         avg_duration: number;
-        p50_duration: number;
-        p95_duration: number;
-        p99_duration: number;
+        // null on the rollup path, which has no percentile detail
+        p50_duration: number | null;
+        p95_duration: number | null;
+        p99_duration: number | null;
       }>,
     };
   }

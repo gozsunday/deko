@@ -57,6 +57,13 @@
       "when": 1790892242613,
       "tag": "0007_dashboard_rollups",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790892243613,
+      "tag": "0008_timeseries_rollup",
+      "breakpoints": true
     }
   ]
 }

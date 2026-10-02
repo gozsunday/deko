@@ -44,6 +44,7 @@ export type TimeseriesFilters = {
   method?: Method;
   path?: string;
   level?: Level;
+  needsPercentiles?: boolean;
 };
 
 // Filters for the top-endpoints leaderboard query.

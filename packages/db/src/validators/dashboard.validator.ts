@@ -66,9 +66,11 @@ export const ServiceTimeseriesStatsSchema = z.object({
       requests: z.number().optional(),
       errors: z.number().optional(),
       avgDuration: z.number().optional(),
-      p50Duration: z.number().optional(),
-      p95Duration: z.number().optional(),
-      p99Duration: z.number().optional(),
+      // null when served from the minute rollup, which keeps counts and a
+      // duration sum but not the distribution needed for percentiles
+      p50Duration: z.number().nullish(),
+      p95Duration: z.number().nullish(),
+      p99Duration: z.number().nullish(),
     }),
   ),
 });

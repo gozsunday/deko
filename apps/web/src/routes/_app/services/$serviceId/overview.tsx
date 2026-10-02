@@ -39,6 +39,9 @@ import {
 } from "@/server/dashboard";
 import { usePeriodStore } from "@/stores/period-store";
 
+// the chart plots requests and errors only
+const TIMESERIES_METRICS = "requests,errors";
+
 export const Route = createFileRoute("/_app/services/$serviceId/overview")({
   component: OverviewPage,
   // Without this the loader would not re-run when only the environment
@@ -53,7 +56,11 @@ export const Route = createFileRoute("/_app/services/$serviceId/overview")({
       overviewStatsQueryOptions(serviceId, { period, environment }),
     );
     await context.queryClient.ensureQueryData(
-      timeseriesStatsQueryOptions(serviceId, { period, environment }),
+      timeseriesStatsQueryOptions(serviceId, {
+        period,
+        environment,
+        metrics: TIMESERIES_METRICS,
+      }),
     );
     await context.queryClient.ensureQueryData(
       statusBreakdownQueryOptions(serviceId, { period, environment }),
@@ -102,9 +109,15 @@ function OverviewPage() {
   });
 
   const timeseriesQuery = useQuery({
-    ...timeseriesStatsQueryOptions(serviceId, { period, environment }),
+    ...timeseriesStatsQueryOptions(serviceId, {
+      period,
+      environment,
+      metrics: TIMESERIES_METRICS,
+    }),
     queryFn: () =>
-      getTimeseriesStats({ data: { serviceId, period, environment } }),
+      getTimeseriesStats({
+        data: { serviceId, period, environment, metrics: TIMESERIES_METRICS },
+      }),
   });
 
   const statusQuery = useQuery({
