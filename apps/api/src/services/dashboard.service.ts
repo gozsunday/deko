@@ -290,7 +290,11 @@ export const setCountInCache = async (
   key: string,
   value: number,
 ): Promise<void> => {
-  const fullKey = `${LOG_COUNT_CACHE_PREFIX}${key}`;
-  await redisClient.set(fullKey, value.toString());
-  await redisClient.expire(fullKey, LOG_COUNT_CACHE_TTL_S);
+  // setex, not set + expire: two commands leave a window where a crash strands
+  // the key with no TTL, and nothing would ever reclaim it
+  await redisClient.setex(
+    `${LOG_COUNT_CACHE_PREFIX}${key}`,
+    LOG_COUNT_CACHE_TTL_S,
+    value.toString(),
+  );
 };
