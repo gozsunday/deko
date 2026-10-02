@@ -1,8 +1,10 @@
+import { useEffect } from "react";
+
 import { useSidebar } from "@/components/ui/sidebar";
-import { useNavigationOverlay } from "@/hooks/use-navigation-overlay";
+import { useIsNavigating } from "@/hooks/use-is-navigating";
 
 export function NavOverlay() {
-  const { isNavigating } = useNavigationOverlay();
+  const isNavigating = useIsNavigating();
   const { isMobile, state } = useSidebar();
 
   const leftOffsetClass = isMobile
@@ -10,6 +12,15 @@ export function NavOverlay() {
     : state === "collapsed"
       ? "left-[var(--sidebar-width-icon)]"
       : "left-[var(--sidebar-width)]";
+
+  // the overlay blocks the page, so hold the scroll while it is up
+  useEffect(() => {
+    document.body.style.overflow = isNavigating ? "hidden" : "";
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isNavigating]);
 
   return (
     <>

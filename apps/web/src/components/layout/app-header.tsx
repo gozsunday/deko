@@ -23,12 +23,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useApiFailure } from "@/hooks/use-api-failure";
+import { useIsNavigating } from "@/hooks/use-is-navigating";
 import { cn } from "@/lib/utils";
 import {
   $getSingleService,
   singleServiceQueryOptions,
 } from "@/server/services";
-import { useNavigationStore } from "@/stores/navigation-store";
 
 const PAGE_SEGMENT_TITLES: Record<string, string> = {
   overview: "Overview",
@@ -48,7 +48,7 @@ export function AppHeader() {
   const queryClient = useQueryClient();
 
   const [isCoolingDown, setIsCoolingDown] = useState(false);
-  const isNavigating = useNavigationStore((s) => s.isNavigating);
+  const isNavigating = useIsNavigating();
 
   const failure = useApiFailure();
   const hasError = failure !== null;
