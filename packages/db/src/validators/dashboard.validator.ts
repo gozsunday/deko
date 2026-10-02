@@ -160,13 +160,14 @@ export const TopEndpointSchema = z.object({
   errors: z.number(),
   errorRate: z.number(),
   avgDuration: z.number(),
-  p95Duration: z.number(),
-  p99Duration: z.number(),
+  p95Duration: z.number().nullish(),
+  p99Duration: z.number().nullish(),
 });
 
 export const TopEndpointsResponseSchema = z.object({
   endpoints: z.array(TopEndpointSchema),
   sortBy: TopEndpointSortBySchema,
+  total: z.number(),
 });
 
 export const ErrorGroupQuerySchema = z.object({

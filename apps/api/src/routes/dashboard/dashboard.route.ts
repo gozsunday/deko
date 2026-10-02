@@ -908,7 +908,7 @@ export const createDashboardRouter = ({
 
       return c.json(
         successResponse(
-          { endpoints, sortBy },
+          { endpoints: endpoints.endpoints, total: endpoints.total, sortBy },
           "Top endpoints retrieved successfully",
         ),
         HttpStatusCodes.OK,

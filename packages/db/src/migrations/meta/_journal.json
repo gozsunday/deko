@@ -64,6 +64,13 @@
       "when": 1790892243613,
       "tag": "0008_timeseries_rollup",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790892244613,
+      "tag": "0009_endpoint_rollup",
+      "breakpoints": true
     }
   ]
 }

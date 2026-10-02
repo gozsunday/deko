@@ -161,6 +161,7 @@ function EndpointsPage() {
         <EndpointsTable
           endpoints={endpoints}
           isLoading={endpointsQuery.isLoading}
+          serviceId={serviceId}
         />
       )}
     </div>

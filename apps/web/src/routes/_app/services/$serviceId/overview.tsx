@@ -301,7 +301,11 @@ function OverviewPage() {
 
         {/* Top endpoints preview */}
         {topEndpointsQuery.isPending ? (
-          <TopEndpointsPreview endpoints={EMPTY_TOP_ENDPOINTS} isLoading />
+          <TopEndpointsPreview
+            endpoints={EMPTY_TOP_ENDPOINTS}
+            isLoading
+            serviceId={serviceId}
+          />
         ) : topEndpointsQuery.isError ? (
           <ErrorCard
             title="Top Endpoints"
@@ -316,7 +320,11 @@ function OverviewPage() {
             className="py-16"
           />
         ) : (
-          <TopEndpointsPreview endpoints={topEndpoints} isLoading={false} />
+          <TopEndpointsPreview
+            endpoints={topEndpoints}
+            isLoading={false}
+            serviceId={serviceId}
+          />
         )}
       </div>
     </>

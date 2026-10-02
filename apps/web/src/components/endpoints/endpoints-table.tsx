@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import type { TopEndpoint } from "@repo/db/validators/dashboard.validator";
@@ -20,12 +21,15 @@ const METHOD_STYLES: Record<string, string> = {
   HEAD: "text-zinc-600 dark:text-zinc-400",
 };
 
-function formatDuration(ms: number): string {
+function formatDuration(ms: number | null | undefined): string {
+  // null when the rollup served the row; it has no distribution
+  if (ms == null) return "—";
   if (ms >= 1000) return `${(ms / 1000).toFixed(3)}s`;
   return `${ms}ms`;
 }
 
-function durationColor(ms: number): string {
+function durationColor(ms: number | null | undefined): string {
+  if (ms == null) return "text-muted-foreground";
   if (ms >= 1000) return "text-red-600 dark:text-red-400";
   if (ms >= 500) return "text-amber-600 dark:text-amber-400";
   return "text-muted-foreground";
@@ -37,14 +41,30 @@ function errorRateColor(rate: number): string {
   return "text-muted-foreground";
 }
 
-export const endpointColumns: ColumnDef<TopEndpoint>[] = [
+// The table lists endpoint shapes like /api/products/:id, but the logs filter
+// matches real paths, so a shape's :id segments have to become wildcards.
+const shapeToPathFilter = (shape: string) => shape.replaceAll(":id", "*");
+
+export const endpointColumns = (
+  serviceId: string,
+): ColumnDef<TopEndpoint>[] => [
   {
     id: "endpoint",
     accessorFn: (row) => `${row.method} ${row.path}`,
     header: "Endpoint",
     enableSorting: false,
     cell: ({ row }) => (
-      <span className="flex items-center gap-1.5 font-mono text-xs">
+      <Link
+        to="/services/$serviceId/logs"
+        params={{ serviceId }}
+        search={{
+          method: row.original.method,
+          path: shapeToPathFilter(row.original.path),
+          view: "all",
+        }}
+        className="flex items-center gap-1.5 font-mono text-xs hover:underline"
+        title="View matching logs"
+      >
         <span
           className={cn(
             "shrink-0 text-[11px] font-semibold",
@@ -54,7 +74,7 @@ export const endpointColumns: ColumnDef<TopEndpoint>[] = [
           {row.original.method}
         </span>
         <span className="truncate text-foreground/80">{row.original.path}</span>
-      </span>
+      </Link>
     ),
   },
   {
@@ -174,26 +194,33 @@ export const endpointFilters: FilterConfig[] = [
 interface EndpointsTableProps {
   endpoints: TopEndpoint[];
   isLoading?: boolean;
+  serviceId: string;
 }
 
-const ENDPOINT_LOADING_COLUMN_KEYS = endpointColumns.map((column) => {
-  if ("id" in column && typeof column.id === "string") {
-    return column.id;
-  }
-  if ("accessorKey" in column && typeof column.accessorKey === "string") {
-    return column.accessorKey;
-  }
-  return "column";
-});
+const columnKeysOf = (columns: ColumnDef<TopEndpoint>[]) =>
+  columns.map((column) => {
+    if ("id" in column && typeof column.id === "string") {
+      return column.id;
+    }
+    if ("accessorKey" in column && typeof column.accessorKey === "string") {
+      return column.accessorKey;
+    }
+    return "column";
+  });
 
-export function EndpointsTable({ endpoints, isLoading }: EndpointsTableProps) {
+export function EndpointsTable({
+  endpoints,
+  isLoading,
+  serviceId,
+}: EndpointsTableProps) {
+  const columns = endpointColumns(serviceId);
   const tableBodyAppend = isLoading ? (
-    <LoadingRows columnKeys={ENDPOINT_LOADING_COLUMN_KEYS} />
+    <LoadingRows columnKeys={columnKeysOf(columns)} />
   ) : undefined;
 
   return (
     <DataTable
-      columns={endpointColumns}
+      columns={columns}
       data={endpoints}
       emptyMessage="No endpoints found for the selected period."
       defaultPagination={{ pageIndex: 0, pageSize: 50 }}
@@ -229,11 +256,13 @@ function LoadingRows({ columnKeys }: { columnKeys: string[] }) {
 interface TopEndpointsPreviewProps {
   endpoints: TopEndpoint[];
   isLoading?: boolean;
+  serviceId: string;
 }
 
 export function TopEndpointsPreview({
   endpoints,
   isLoading,
+  serviceId,
 }: TopEndpointsPreviewProps) {
   if (isLoading) {
     return (
@@ -266,9 +295,17 @@ export function TopEndpointsPreview({
         ) : (
           <div className="flex flex-col divide-y divide-border/30">
             {endpoints.slice(0, 5).map((ep) => (
-              <div
+              <Link
                 key={`${ep.method}-${ep.path}`}
-                className="flex items-center gap-2 py-2"
+                to="/services/$serviceId/logs"
+                params={{ serviceId }}
+                search={{
+                  method: ep.method,
+                  path: shapeToPathFilter(ep.path),
+                  view: "all",
+                }}
+                className="flex items-center gap-2 py-2 hover:underline"
+                title="View matching logs"
               >
                 <Badge
                   variant="outline"
@@ -285,7 +322,7 @@ export function TopEndpointsPreview({
                 <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
                   {ep.requests.toLocaleString()}
                 </span>
-              </div>
+              </Link>
             ))}
           </div>
         )}

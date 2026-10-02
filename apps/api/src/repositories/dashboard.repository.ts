@@ -105,7 +105,9 @@ export interface IDashboardRepository {
   getLogLevelBreakdown(
     params: LogLevelBreakdownParams,
   ): Promise<LogLevelBreakdown>;
-  getTopEndpoints(filters: TopEndpointsFilters): Promise<TopEndpoint[]>;
+  getTopEndpoints(
+    filters: TopEndpointsFilters,
+  ): Promise<{ endpoints: TopEndpoint[]; total: number }>;
   getErrorGroups(filters: ErrorGroupFilters): Promise<ErrorGroupsResponse>;
   getServiceEnvironments(serviceId: string): Promise<string[]>;
   getLogsByRequestId(
@@ -469,8 +471,10 @@ export class DashboardRepository implements IDashboardRepository {
     };
   }
 
-  /** Ranks endpoints by the requested metric (traffic, errors, latency, etc.). */
-  async getTopEndpoints(filters: TopEndpointsFilters): Promise<TopEndpoint[]> {
+  /** Ranks endpoint shapes by the requested metric (traffic, errors, latency, etc). */
+  async getTopEndpoints(
+    filters: TopEndpointsFilters,
+  ): Promise<{ endpoints: TopEndpoint[]; total: number }> {
     const {
       serviceId,
       period = "24h",
@@ -509,46 +513,88 @@ export class DashboardRepository implements IDashboardRepository {
       p95_duration: sql`PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration)`,
       p99_duration: sql`PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration)`,
     } as const;
-    const orderByExpr = orderByExprMap[sortBy];
 
-    const result = await db.execute(sql`
-      SELECT
-        method,
-        path,
-        COUNT(*)::int AS requests,
-        COUNT(*) FILTER (WHERE status >= 400)::int AS errors,
-        ROUND(COALESCE(AVG(duration), 0)::numeric, 3)::real AS "avgDuration",
-        ROUND(COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration), 0)::numeric, 3)::real AS "p95Duration",
-        ROUND(COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration), 0)::numeric, 3)::real AS "p99Duration"
-      FROM log_event
-      WHERE ${and(...conditions)}
-      GROUP BY method, path
-      ORDER BY ${orderByExpr} DESC NULLS LAST
-      LIMIT ${limit}
-    `);
+    // The rollup groups paths into shapes and carries counts and a duration
+    // sum, so it answers requests/errors/error_rate/avg exactly. Percentiles
+    // need the distribution, which it does not keep.
+    const useRollup = sortBy !== "p95_duration" && sortBy !== "p99_duration";
+
+    const rollupOrderBy = {
+      requests: sql`SUM(requests)`,
+      errors: sql`SUM(errors)`,
+      error_rate: sql`SUM(errors)::real / NULLIF(SUM(requests), 0)`,
+    } as const;
+
+    const rollupScope = sql`
+      service_id = ${serviceId}
+      AND bucket >= time_bucket(INTERVAL '15 minutes', now() - ${PERIOD_TO_DB_INTERVAL[period]}::interval)
+      AND bucket <= time_bucket(INTERVAL '15 minutes', now())
+      ${environment ? sql`AND environment = ${environment}` : sql``}
+      ${method ? sql`AND method = ${method}` : sql``}
+    `;
+
+    // COUNT(*) OVER () counts the groups before LIMIT, giving the total in the
+    // same round-trip.
+    const result = useRollup
+      ? await db.execute(sql`
+          SELECT
+            method,
+            path_shape AS path,
+            SUM(requests)::int AS requests,
+            SUM(errors)::int AS errors,
+            ROUND(COALESCE(SUM(duration_sum)::numeric / NULLIF(SUM(requests), 0), 0), 3)::real AS "avgDuration",
+            NULL::real AS "p95Duration",
+            NULL::real AS "p99Duration",
+            COUNT(*) OVER ()::int AS total
+          FROM service_endpoint_counts
+          WHERE ${rollupScope}
+          GROUP BY method, path_shape
+          ORDER BY ${rollupOrderBy[sortBy]} DESC NULLS LAST
+          LIMIT ${limit}
+        `)
+      : await db.execute(sql`
+          SELECT
+            method,
+            regexp_replace(path, '/[0-9]+', '/:id', 'g') AS path,
+            COUNT(*)::int AS requests,
+            COUNT(*) FILTER (WHERE status >= 400)::int AS errors,
+            ROUND(COALESCE(AVG(duration), 0)::numeric, 3)::real AS "avgDuration",
+            ROUND(COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration), 0)::numeric, 3)::real AS "p95Duration",
+            ROUND(COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration), 0)::numeric, 3)::real AS "p99Duration",
+            COUNT(*) OVER ()::int AS total
+          FROM log_event
+          WHERE ${and(...conditions)}
+          GROUP BY 1, 2
+          ORDER BY ${orderByExprMap[sortBy]} DESC NULLS LAST
+          LIMIT ${limit}
+        `);
+
+    const rows = result.rows as Array<{
+      method: MethodType;
+      path: string;
+      requests: number;
+      errors: number;
+      avgDuration: number;
+      p95Duration: number | null;
+      p99Duration: number | null;
+      total: number;
+    }>;
 
     // errorRate is computed in TypeScript to avoid a second DB round-trip.
     // It is expressed as a percentage (0–100), consistent with the overview stats endpoint.
-    return (
-      result.rows as Array<{
-        method: MethodType;
-        path: string;
-        requests: number;
-        errors: number;
-        avgDuration: number;
-        p95Duration: number;
-        p99Duration: number;
-      }>
-    ).map((row) => ({
-      method: row.method,
-      path: row.path,
-      requests: row.requests,
-      errors: row.errors,
-      errorRate: row.requests > 0 ? (row.errors / row.requests) * 100 : 0,
-      avgDuration: row.avgDuration,
-      p95Duration: row.p95Duration,
-      p99Duration: row.p99Duration,
-    }));
+    return {
+      total: rows[0]?.total ?? 0,
+      endpoints: rows.map((row) => ({
+        method: row.method,
+        path: row.path,
+        requests: row.requests,
+        errors: row.errors,
+        errorRate: row.requests > 0 ? (row.errors / row.requests) * 100 : 0,
+        avgDuration: row.avgDuration,
+        p95Duration: row.p95Duration,
+        p99Duration: row.p99Duration,
+      })),
+    };
   }
 
   /**

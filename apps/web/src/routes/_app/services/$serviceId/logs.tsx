@@ -48,6 +48,7 @@ const logsSearchSchema = z.object({
     ])
     .optional()
     .catch(undefined),
+  path: z.string().optional().catch(undefined),
   logId: z.string().optional().catch(undefined),
   timestamp: z.string().optional().catch(undefined),
 });
@@ -103,6 +104,7 @@ function LogsPage() {
       level: searchParams.level,
       method: searchParams.method,
       status: searchParams.status,
+      path: searchParams.path,
       view: "all",
     }),
     initialPageParam: undefined as string | undefined,
@@ -117,6 +119,7 @@ function LogsPage() {
           level: searchParams.level,
           method: searchParams.method,
           status: searchParams.status,
+          path: searchParams.path,
           cursor,
           limit: LOGS_PAGE_SIZE,
         },

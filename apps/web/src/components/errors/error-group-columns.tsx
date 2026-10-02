@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import type { ColumnDef } from "@tanstack/react-table";
 import { formatDistanceToNowStrict } from "date-fns";
 
@@ -28,14 +29,27 @@ const formatRelativeTime = (value: Date) => {
   });
 };
 
-export const errorGroupColumns: ColumnDef<ErrorGroup>[] = [
+export const errorGroupColumns = (
+  serviceId: string,
+): ColumnDef<ErrorGroup>[] => [
   {
     id: "endpoint",
     accessorFn: (row) => `${row.method} ${row.path}`,
     header: "Endpoint",
     enableSorting: false,
     cell: ({ row }) => (
-      <div className="flex flex-col gap-0.5">
+      <Link
+        to="/services/$serviceId/logs"
+        params={{ serviceId }}
+        search={{
+          method: row.original.method,
+          path: row.original.path,
+          status: row.original.status,
+          view: "all",
+        }}
+        className="flex flex-col gap-0.5 hover:underline"
+        title="View matching logs"
+      >
         <span className="flex items-center gap-1.5 font-mono text-xs">
           <span
             className={cn(
@@ -62,7 +76,7 @@ export const errorGroupColumns: ColumnDef<ErrorGroup>[] = [
             {row.original.message}
           </span>
         )}
-      </div>
+      </Link>
     ),
   },
   {

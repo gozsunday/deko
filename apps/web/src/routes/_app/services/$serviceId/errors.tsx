@@ -57,15 +57,16 @@ export const Route = createFileRoute("/_app/services/$serviceId/errors")({
 });
 
 const EMPTY_ERROR_GROUPS: ErrorGroup[] = [];
-const ERROR_GROUP_LOADING_COLUMN_KEYS = errorGroupColumns.map((column) => {
-  if ("id" in column && typeof column.id === "string") {
-    return column.id;
-  }
-  if ("accessorKey" in column && typeof column.accessorKey === "string") {
-    return column.accessorKey;
-  }
-  return "column";
-});
+const columnKeysOf = (columns: ReturnType<typeof errorGroupColumns>) =>
+  columns.map((column) => {
+    if ("id" in column && typeof column.id === "string") {
+      return column.id;
+    }
+    if ("accessorKey" in column && typeof column.accessorKey === "string") {
+      return column.accessorKey;
+    }
+    return "column";
+  });
 
 function ErrorsPage() {
   const searchParams = useSearch({ from: "/_app/services/$serviceId/errors" });
@@ -166,9 +167,9 @@ function ErrorsPage() {
   const tableBodyAppend = useMemo(
     () =>
       errorGroupsQuery.isPending ? (
-        <LoadingRows columnKeys={ERROR_GROUP_LOADING_COLUMN_KEYS} />
+        <LoadingRows columnKeys={columnKeysOf(errorGroupColumns(serviceId))} />
       ) : undefined,
-    [errorGroupsQuery.isPending],
+    [errorGroupsQuery.isPending, serviceId],
   );
 
   return (
@@ -201,7 +202,7 @@ function ErrorsPage() {
         </Empty>
       ) : (
         <DataTable
-          columns={errorGroupColumns}
+          columns={errorGroupColumns(serviceId)}
           data={errorGroupsQuery.data?.groups ?? EMPTY_ERROR_GROUPS}
           emptyMessage="No error groups found for the selected period."
           rowCount={total ?? 0}
