@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 
-type SimulationMode = "steady" | "bursty" | "chaos" | "real";
 type LogLevel = "debug" | "info" | "warn" | "error";
 type HttpMethod =
   | "GET"
@@ -11,12 +10,18 @@ type HttpMethod =
   | "OPTIONS"
   | "HEAD";
 
+/** [value, weight] — weights are relative, not percentages. */
+type Weighted<T> = Array<[T, number]>;
+
 type EndpointProfile = {
-  pathTemplates: string[];
-  methods: HttpMethod[];
+  pathTemplates: Weighted<string>;
+  methods: Weighted<HttpMethod>;
   baseDurationMs: number;
   p95Multiplier: number;
-  statusPool: number[];
+  // kept apart so the error rate can be steered per event instead of being
+  // whatever the mix of a single pool happens to be
+  successPool: number[];
+  errorPool: number[];
   levelBias: LogLevel[];
   category: string;
 };
@@ -25,140 +30,182 @@ const app = new Hono();
 
 const API_URL = process.env.API_URL || "http://localhost:8000";
 const SERVICE_TOKEN = process.env.SERVICE_TOKEN;
-const BASE_INTERVAL_MS = parseInt(process.env.INTERVAL_MS || "2500", 10);
-const VALID_MODES: SimulationMode[] = ["steady", "bursty", "chaos", "real"];
+
+// Mean gap between arrivals. Inter-arrival times are drawn from an exponential
+// distribution with this mean, which is what makes traffic look organic: mostly
+// short gaps, occasional long ones, no preferred rhythm to spot.
+const MEAN_INTERVAL_MS = Math.max(
+  1,
+  parseInt(
+    process.env.INTERVAL_MS || process.env.MEAN_INTERVAL_MS || "1000",
+    10,
+  ),
+);
+
+// Micro-batching: events are held until one of these trips, so ingest still
+// receives batches without the simulator having to fire one event per timer.
+const BATCH_MAX_EVENTS = parseInt(process.env.BATCH_MAX_EVENTS || "40", 10);
+const BATCH_MAX_AGE_MS = parseInt(process.env.BATCH_MAX_AGE_MS || "1500", 10);
 
 // Endpoint profiles shape generated traffic so each route has distinct behavior.
-// Status pools are weighted toward 2xx — global error rate target is <15%.
+// Each carries its own error budget (auth is far noisier than a health check);
+// the pools are split so errorRateAt() can scale it at any moment.
 const endpointProfiles: EndpointProfile[] = [
   {
-    pathTemplates: ["/api/health"],
-    methods: ["GET"],
+    // health is read-only and polled constantly
+    pathTemplates: [["/api/health", 1]],
+    methods: [["GET", 1]],
     baseDurationMs: 10,
     p95Multiplier: 1.8,
-    // ~3% errors (1 non-2xx in 30)
-    statusPool: [
-      200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200,
-      200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 503, 504,
+    // ~4% errors — polled constantly, almost never fails
+    successPool: [
+      200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200,
     ],
+    errorPool: [503, 504],
     levelBias: ["debug", "debug", "info", "info", "info"],
     category: "infrastructure",
   },
   {
-    pathTemplates: ["/api/auth/login", "/api/auth/refresh", "/api/auth/logout"],
-    methods: ["POST"],
+    pathTemplates: [
+      ["/api/auth/login", 5],
+      ["/api/auth/refresh", 4],
+      ["/api/auth/logout", 2],
+    ],
+    methods: [["POST", 1]],
     baseDurationMs: 90,
     p95Multiplier: 3.2,
-    // ~14% errors — auth is legitimately noisier (wrong passwords, expired tokens)
-    statusPool: [
-      200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 401, 401,
-      429, 500, 502,
-    ],
+    // ~28% errors — auth is legitimately the noisiest (bad passwords, expired tokens)
+    successPool: [200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200],
+    errorPool: [401, 401, 429, 500, 502],
     levelBias: ["info", "info", "info", "info", "warn"],
     category: "auth",
   },
   {
+    // collection listing outnumbers single fetches, which outnumber deep reads
     pathTemplates: [
-      "/api/users",
-      "/api/users/:id",
-      "/api/users/:id/profile",
-      "/api/users/:id/preferences",
+      ["/api/users", 6],
+      ["/api/users/:id", 8],
+      ["/api/users/:id/profile", 2],
+      ["/api/users/:id/preferences", 1],
     ],
-    methods: ["GET", "PATCH"],
+    methods: [
+      ["GET", 5],
+      ["PATCH", 1],
+    ],
     baseDurationMs: 55,
     p95Multiplier: 2.6,
-    // ~8% errors
-    statusPool: [
+    // ~26% errors — item reads miss often on a large catalogue
+    successPool: [
       200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200,
-      404, 404, 500, 503,
     ],
+    errorPool: [404, 404, 500, 503],
     levelBias: ["debug", "info", "info", "info", "warn"],
     category: "user",
   },
   {
+    // catalog reads dominate: search and listing are the hot paths
     pathTemplates: [
-      "/api/products",
-      "/api/products/:id",
-      "/api/products/:id/reviews",
-      "/api/search",
-      "/api/categories",
+      ["/api/search", 8],
+      ["/api/products", 6],
+      ["/api/categories", 3],
+      ["/api/products/:id", 5],
+      ["/api/products/:id/reviews", 2],
     ],
-    methods: ["GET"],
+    methods: [["GET", 1]],
     baseDurationMs: 45,
     p95Multiplier: 2.0,
-    // ~5% errors — catalog reads are stable
-    statusPool: [
+    // ~9% errors — catalog reads are the most stable
+    successPool: [
       200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200,
-      200, 200, 200, 304, 304, 404, 500,
+      200, 200, 304, 304,
     ],
+    errorPool: [404, 500],
     levelBias: ["debug", "debug", "info", "info", "info"],
     category: "catalog",
   },
   {
+    // writes are rarer than reads, and checkout is the rarest of all
     pathTemplates: [
-      "/api/cart",
-      "/api/cart/:id",
-      "/api/checkout",
-      "/api/orders",
-      "/api/orders/:id",
-      "/api/orders/:id/cancel",
+      ["/api/cart", 5],
+      ["/api/orders", 4],
+      ["/api/cart/:id", 3],
+      ["/api/orders/:id", 3],
+      ["/api/checkout", 2],
+      ["/api/orders/:id/cancel", 1],
     ],
-    methods: ["GET", "POST", "DELETE"],
+    methods: [
+      ["GET", 4],
+      ["POST", 3],
+      ["DELETE", 1],
+    ],
     baseDurationMs: 135,
     p95Multiplier: 4.0,
-    // ~13% errors — commerce touches more dependencies so slightly higher
-    statusPool: [
-      200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 201, 201, 201,
-      204, 400, 409, 422, 500, 502, 503,
+    // ~28% errors — commerce touches the most dependencies
+    successPool: [
+      200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 201, 201, 201, 204,
     ],
+    errorPool: [400, 409, 422, 500, 502, 503],
     levelBias: ["info", "info", "info", "warn", "error"],
     category: "commerce",
   },
   {
     pathTemplates: [
-      "/api/settings",
-      "/api/settings/notifications",
-      "/api/settings/security",
+      ["/api/settings", 4],
+      ["/api/settings/notifications", 3],
+      ["/api/settings/security", 1],
     ],
-    methods: ["GET", "PUT"],
+    methods: [
+      ["GET", 5],
+      ["PUT", 1],
+    ],
     baseDurationMs: 65,
     p95Multiplier: 2.4,
-    // ~6% errors
-    statusPool: [
+    // ~14% errors — config changes are rarer and more likely to be rejected
+    successPool: [
       200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200,
-      204, 204, 400, 403, 500,
+      204, 204,
     ],
+    errorPool: [400, 403, 500],
     levelBias: ["info", "info", "info", "info", "warn"],
     category: "config",
   },
   {
     pathTemplates: [
-      "/api/notifications",
-      "/api/notifications/:id/read",
-      "/api/notifications/mark-all-read",
+      ["/api/notifications", 5],
+      ["/api/notifications/:id/read", 4],
+      ["/api/notifications/mark-all-read", 1],
     ],
-    methods: ["GET", "POST", "PATCH"],
+    methods: [
+      ["GET", 5],
+      ["POST", 2],
+      ["PATCH", 1],
+    ],
     baseDurationMs: 40,
     p95Multiplier: 2.1,
-    // ~4% errors — lightweight service
-    statusPool: [
+    // ~6% errors — lightweight service
+    successPool: [
       200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200,
-      200, 200, 200, 200, 200, 204, 204, 404, 500,
+      200, 200, 204, 204,
     ],
+    errorPool: [404, 500],
     levelBias: ["debug", "info", "info", "info", "info"],
     category: "notifications",
   },
   {
-    pathTemplates: ["/api/analytics/events", "/api/analytics/pageview"],
-    methods: ["POST"],
+    // analytics is fire-and-forget, so almost everything is a 202
+    pathTemplates: [
+      ["/api/analytics/events", 6],
+      ["/api/analytics/pageview", 4],
+    ],
+    methods: [["POST", 1]],
     baseDurationMs: 25,
     p95Multiplier: 1.9,
-    // ~3% errors — fire-and-forget, rarely fails
-    statusPool: [
-      200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200,
-      200, 200, 200, 200, 200, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
-      400, 500, 504,
+    // ~7% errors — fire-and-forget, almost never fails
+    successPool: [
+      202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
+      202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202, 202,
     ],
+    errorPool: [400, 500, 504],
     levelBias: ["debug", "debug", "debug", "info", "info"],
     category: "analytics",
   },
@@ -285,6 +332,18 @@ function getRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+function weightedPick<T>(entries: Weighted<T>): T {
+  const total = entries.reduce((sum, [, weight]) => sum + weight, 0);
+  let roll = Math.random() * total;
+
+  for (const [value, weight] of entries) {
+    roll -= weight;
+    if (roll <= 0) return value;
+  }
+
+  return entries[entries.length - 1][0];
+}
+
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -293,17 +352,101 @@ function randomChance(probability: number): boolean {
   return Math.random() < probability;
 }
 
-function resolvePath(template: string): string {
-  if (!template.includes(":id")) return template;
-  return template.replace(":id", randomInt(1, 9999).toString());
+/**
+ * Real ids follow a power law: a handful are hot and most are seen once or
+ * twice. A uniform pick would give every id equal traffic and flatten the long
+ * tail that makes per-endpoint rollups interesting.
+ */
+function resolveId(): string {
+  const span = 9999;
+  const skew = Math.pow(Math.random(), 3);
+  return Math.max(1, Math.round(1 + (span - 1) * skew)).toString();
 }
 
-function generateDuration(profile: EndpointProfile): number {
+function resolvePath(template: string): string {
+  if (!template.includes(":id")) return template;
+  return template.replace(":id", resolveId());
+}
+
+/**
+ * A sum of sinusoids at incommensurate periods. Bounded, smooth, and slow to
+ * repeat, so the shape never settles into a rhythm a viewer can predict — the
+ * opposite of the old fixed tier durations.
+ */
+const wobble = (
+  at: number,
+  terms: ReadonlyArray<readonly [number, number]>,
+): number =>
+  terms.reduce(
+    (sum, [periodMs, phase]) => sum + Math.sin(at / periodMs + phase),
+    0,
+  ) / terms.length;
+
+/** Remap a [-1, 1] signal onto [lo, hi]. */
+const mapRange = (w: number, lo: number, hi: number): number =>
+  lo + ((hi - lo) * (w + 1)) / 2;
+
+// Rate follows a daily rhythm: quietest around 04:00, busiest mid-afternoon,
+// with a slower wobble on top so no two days repeat.
+const RATE_MULTIPLIER_MIN = 0.4;
+const RATE_MULTIPLIER_MAX = 2.6;
+const DAY_WOBBLE = [
+  [7 * 3_600_000, 0.7],
+  [29 * 60_000, 2.1],
+] as const;
+
+// Error pressure drifts independently of volume, so the error rate moves on
+// its own schedule rather than tracking request count.
+const ERROR_FACTOR_MIN = 0.62;
+const ERROR_FACTOR_MAX = 1.85;
+const ERROR_WOBBLE = [
+  [9 * 60_000, 0],
+  [23 * 60_000, 1.9],
+  [61 * 60_000, 3.3],
+] as const;
+
+/** Mean base error rate across the profiles, before any time scaling. */
+const MEAN_ERROR_RATE =
+  endpointProfiles.reduce(
+    (sum, profile) =>
+      sum +
+      profile.errorPool.length /
+        (profile.successPool.length + profile.errorPool.length),
+    0,
+  ) / endpointProfiles.length;
+
+const rateMultiplierAt = (at: Date): number => {
+  const hour = at.getHours() + at.getMinutes() / 60;
+  const daily = Math.cos(((hour - 15) / 24) * 2 * Math.PI);
+  // the daily term dominates so the swing is wide; the wobble just keeps
+  // consecutive days from being identical
+  const signal = 0.9 * daily + 0.1 * wobble(at.getTime(), DAY_WOBBLE);
+  return mapRange(signal, RATE_MULTIPLIER_MIN, RATE_MULTIPLIER_MAX);
+};
+
+const errorFactorAt = (at: Date): number =>
+  mapRange(
+    wobble(at.getTime(), ERROR_WOBBLE),
+    ERROR_FACTOR_MIN,
+    ERROR_FACTOR_MAX,
+  );
+
+/** This category's own budget, scaled by how much error pressure there is. */
+const errorRateAt = (profile: EndpointProfile, at: Date): number => {
+  const total = profile.successPool.length + profile.errorPool.length;
+  if (total === 0) return 0;
+  const base = profile.errorPool.length / total;
+  return Math.min(0.95, Math.max(0.01, base * errorFactorAt(at)));
+};
+
+function generateDuration(profile: EndpointProfile, at: Date): number {
   const isTail = randomChance(0.08);
   const multiplier = isTail
     ? profile.p95Multiplier + Math.random() * 2.5
     : 0.6 + Math.random() * 1.4;
-  return Math.max(1, Math.round(profile.baseDurationMs * multiplier));
+  // struggling services answer slower, so latency tracks the error curve
+  const strain = 1 + (errorFactorAt(at) - 1) * 0.35;
+  return Math.max(1, Math.round(profile.baseDurationMs * multiplier * strain));
 }
 
 function generateMessage(
@@ -344,22 +487,28 @@ function generateMessage(
   return `Request completed for ${method} ${path}`;
 }
 
-function generateRandomLog() {
+function generateRandomLog(at: Date) {
   const profile = getRandom(endpointProfiles);
-  const method = getRandom(profile.methods);
-  const path = resolvePath(getRandom(profile.pathTemplates));
-  const status = getRandom(profile.statusPool);
+  const method = weightedPick(profile.methods);
+  const path = resolvePath(weightedPick(profile.pathTemplates));
+  const status = getRandom(
+    randomChance(errorRateAt(profile, at))
+      ? profile.errorPool
+      : profile.successPool,
+  );
 
   const fallbackLevel: LogLevel =
     status >= 500 ? "error" : status >= 400 ? "warn" : "info";
   const level = getRandom([...profile.levelBias, fallbackLevel]);
 
-  const duration = generateDuration(profile);
+  const duration = generateDuration(profile, at);
   const environment = getRandom(environments);
 
   return {
     level,
-    timestamp: new Date().toISOString(),
+    // the event's own arrival time, not the moment the batch happened to be
+    // flushed, so a batch does not stamp a pile of identical timestamps
+    timestamp: at.toISOString(),
     environment,
     method,
     path,
@@ -378,198 +527,38 @@ function generateRandomLog() {
   };
 }
 
+type SimLog = ReturnType<typeof generateRandomLog>;
+
 // ---------------------------------------------------------------------------
-// "real" mode — simulates a realistic production traffic cycle.
-//
-// Traffic moves through three tiers: high → medium → low. The order within
-// each tier is shuffled so no two cycles look the same, and no phase repeats
-// back-to-back. Durations are randomized within realistic bounds.
-//
-// High   → 30–60 min   (dense bursts, short pauses)
-// Medium → 3–5 hours   (moderate, steady-ish)
-// Low    → 8–12 hours  (sparse, long gaps — night-time / off-peak)
+// Arrival process
 // ---------------------------------------------------------------------------
 
-type TrafficTier = "high" | "medium" | "low";
-
-type RealPhase = {
-  tier: TrafficTier;
-  durationMs: number;
-};
-
-type RealState = {
-  phases: RealPhase[];
-  currentPhaseIndex: number;
-  phaseStartedAt: number; // Date.now()
-};
-
-const TIER_DURATIONS_MS: Record<TrafficTier, [number, number]> = {
-  high: [30 * 60_000, 60 * 60_000],
-  medium: [3 * 60 * 60_000, 5 * 60 * 60_000],
-  low: [8 * 60 * 60_000, 12 * 60 * 60_000],
-};
-
-function randomDurationInRange([min, max]: [number, number]): number {
-  return randomInt(min, max);
+/**
+ * Exponential inter-arrival: the gap has no preferred length, so traffic has
+ * no rhythm to spot. `1 - u` keeps the argument inside (0, 1] so the log
+ * cannot blow up on Math.random() returning 0.
+ */
+function exponentialDelay(mean: number): number {
+  return -Math.log(1 - Math.random()) * mean;
 }
 
 /**
- * Shuffle an array in place (Fisher-Yates).
+ * The next gap, with the mean scaled by the time-of-day rate so volume drifts
+ * up and down instead of holding one rate forever.
  */
-function shuffle<T>(arr: T[]): T[] {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-/**
- * Build a fresh cycle of phases. The three tiers always appear exactly once,
- * in a shuffled order so no cycle is identical. We also ensure that the first
- * phase of the new cycle differs from the last phase of the previous cycle so
- * the same tier never runs back-to-back across cycle boundaries.
- */
-function buildRealCycle(lastTier?: TrafficTier): RealPhase[] {
-  const tiers: TrafficTier[] = ["high", "medium", "low"];
-  shuffle(tiers);
-
-  // Avoid same tier at cycle boundary
-  if (lastTier && tiers[0] === lastTier) {
-    // Swap first with a random other slot
-    const swapIdx = randomInt(1, tiers.length - 1);
-    [tiers[0], tiers[swapIdx]] = [tiers[swapIdx], tiers[0]];
-  }
-
-  return tiers.map((tier) => ({
-    tier,
-    durationMs: randomDurationInRange(TIER_DURATIONS_MS[tier]),
-  }));
-}
-
-let realState: RealState | null = null;
-
-function initRealState() {
-  const phases = buildRealCycle();
-  realState = {
-    phases,
-    currentPhaseIndex: 0,
-    phaseStartedAt: Date.now(),
-  };
-  console.log(
-    `[real] Starting cycle: ${phases.map((p) => `${p.tier}(${Math.round(p.durationMs / 60_000)}m)`).join(" → ")}`,
-  );
-}
-
-/**
- * Advance the real-mode state machine if the current phase has elapsed.
- * Returns the active tier.
- */
-function tickRealState(): TrafficTier {
-  if (!realState) initRealState();
-  const state = realState!;
-
-  const elapsed = Date.now() - state.phaseStartedAt;
-  const current = state.phases[state.currentPhaseIndex];
-
-  if (elapsed >= current.durationMs) {
-    const nextIndex = state.currentPhaseIndex + 1;
-
-    if (nextIndex >= state.phases.length) {
-      // Cycle complete — build a new one, avoiding back-to-back repeat
-      const lastTier = current.tier;
-      const phases = buildRealCycle(lastTier);
-      realState = {
-        phases,
-        currentPhaseIndex: 0,
-        phaseStartedAt: Date.now(),
-      };
-      console.log(
-        `[real] New cycle: ${phases.map((p) => `${p.tier}(${Math.round(p.durationMs / 60_000)}m)`).join(" → ")}`,
-      );
-      return realState.phases[0].tier;
-    } else {
-      state.currentPhaseIndex = nextIndex;
-      state.phaseStartedAt = Date.now();
-      const next = state.phases[nextIndex];
-      console.log(
-        `[real] Phase transition → ${next.tier} for ${Math.round(next.durationMs / 60_000)}m`,
-      );
-    }
-  }
-
-  return state.phases[state.currentPhaseIndex].tier;
-}
-
-// ---------------------------------------------------------------------------
-// Batch size and delay per mode/tier
-// ---------------------------------------------------------------------------
-
-function getBatchSizeForTier(tier: TrafficTier): number {
-  if (tier === "high")
-    return randomChance(0.6) ? randomInt(12, 25) : randomInt(26, 45);
-  if (tier === "medium")
-    return randomChance(0.7) ? randomInt(3, 8) : randomInt(9, 15);
-  return randomChance(0.8) ? randomInt(1, 3) : randomInt(4, 6);
-}
-
-function getNextDelayMsForTier(tier: TrafficTier): number {
-  if (tier === "high") return randomInt(100, 400);
-  if (tier === "medium") return randomInt(800, BASE_INTERVAL_MS * 1.5);
-  return randomInt(BASE_INTERVAL_MS * 2, BASE_INTERVAL_MS * 6);
-}
-
-function getBatchSize(mode: SimulationMode): number {
-  if (mode === "steady") {
-    return randomChance(0.85) ? randomInt(1, 4) : randomInt(5, 8);
-  }
-  if (mode === "bursty") {
-    return randomChance(0.65) ? randomInt(4, 12) : randomInt(13, 30);
-  }
-  if (mode === "chaos") {
-    return randomChance(0.5) ? randomInt(8, 20) : randomInt(21, 45);
-  }
-  // "real" — delegate to tier logic
-  const tier = tickRealState();
-  return getBatchSizeForTier(tier);
-}
-
-function getNextDelayMs(mode: SimulationMode): number {
-  if (mode === "steady") {
-    const jitter = randomInt(-250, 250);
-    return Math.max(250, BASE_INTERVAL_MS + jitter);
-  }
-  if (mode === "bursty") {
-    return randomChance(0.4)
-      ? randomInt(150, 600)
-      : randomInt(BASE_INTERVAL_MS, BASE_INTERVAL_MS * 2);
-  }
-  if (mode === "chaos") {
-    return randomInt(80, Math.max(120, BASE_INTERVAL_MS));
-  }
-  // "real" — use current tier's delay profile
-  const tier = realState
-    ? realState.phases[realState.currentPhaseIndex].tier
-    : "medium";
-  return getNextDelayMsForTier(tier);
-}
-
-// ---------------------------------------------------------------------------
-// Simulation loop
-// ---------------------------------------------------------------------------
+const nextGapMs = (from: Date): number =>
+  exponentialDelay(MEAN_INTERVAL_MS / rateMultiplierAt(from));
 
 let isSimulating = false;
-let currentMode: SimulationMode =
-  VALID_MODES.find((mode) => mode === process.env.MODE) ?? "steady";
 let loopTimer: ReturnType<typeof setTimeout> | null = null;
+let nextArrivalAt = 0;
+let pending: SimLog[] = [];
 
-async function sendBatch(batchSize: number) {
+async function sendBatch(logs: SimLog[]) {
   if (!SERVICE_TOKEN) {
     stats.lastError = "SERVICE_TOKEN is not set";
     return;
   }
-
-  const logs = Array.from({ length: batchSize }, () => generateRandomLog());
 
   try {
     const response = await fetch(`${API_URL}/api/ingest`, {
@@ -584,22 +573,18 @@ async function sendBatch(batchSize: number) {
     if (!response.ok) {
       stats.failedBatches += 1;
       stats.lastError = `${response.status} ${response.statusText}`;
-      const error = await response.text();
       console.error(
-        `Failed batch (${batchSize} events): ${response.status} ${response.statusText}`,
-        error,
+        `Failed batch (${logs.length} events): ${response.status} ${response.statusText}`,
+        await response.text(),
       );
       return;
     }
 
     const payload = (await response.json()) as {
-      data?: {
-        accepted?: number;
-        rejected?: number;
-      };
+      data?: { accepted?: number; rejected?: number };
     };
 
-    const accepted = payload.data?.accepted ?? batchSize;
+    const accepted = payload.data?.accepted ?? logs.length;
     const rejected = payload.data?.rejected ?? 0;
 
     stats.sentBatches += 1;
@@ -608,13 +593,8 @@ async function sendBatch(batchSize: number) {
     stats.lastRunAt = new Date().toISOString();
     stats.lastError = null;
 
-    const tierInfo =
-      currentMode === "real" && realState
-        ? ` tier=${realState.phases[realState.currentPhaseIndex].tier}`
-        : "";
-
     console.log(
-      `Batch sent: size=${batchSize} accepted=${accepted} rejected=${rejected} mode=${currentMode}${tierInfo}`,
+      `Batch sent: size=${logs.length} accepted=${accepted} rejected=${rejected} buffered=${pending.length}`,
     );
   } catch (error) {
     stats.failedBatches += 1;
@@ -623,31 +603,72 @@ async function sendBatch(batchSize: number) {
   }
 }
 
+async function flushPending() {
+  if (pending.length === 0) return;
+  const batch = pending;
+  pending = [];
+  await sendBatch(batch);
+}
+
+async function onArrivalTick() {
+  const now = Date.now();
+
+  // Materialise every arrival that is already due. Catching up in one go keeps
+  // the rate correct after a stall without needing one timer per event.
+  let guard = 0;
+  while (nextArrivalAt <= now && guard < 500) {
+    pending.push(generateRandomLog(new Date(nextArrivalAt)));
+    nextArrivalAt += nextGapMs(new Date(nextArrivalAt));
+    guard += 1;
+  }
+
+  if (nextArrivalAt < now) nextArrivalAt = now;
+
+  const oldestPendingAt = pending[0]
+    ? new Date(pending[0].timestamp).getTime()
+    : Infinity;
+
+  if (
+    pending.length >= BATCH_MAX_EVENTS ||
+    (pending.length > 0 && now - oldestPendingAt >= BATCH_MAX_AGE_MS)
+  ) {
+    await flushPending();
+  }
+
+  scheduleNextTick();
+}
+
 function scheduleNextTick() {
   if (!isSimulating) return;
-  const delayMs = getNextDelayMs(currentMode);
 
-  loopTimer = setTimeout(async () => {
-    await sendBatch(getBatchSize(currentMode));
-    scheduleNextTick();
-  }, delayMs);
+  const now = Date.now();
+  const untilArrival = Math.max(0, nextArrivalAt - now);
+  const oldestPendingAt = pending[0]
+    ? new Date(pending[0].timestamp).getTime()
+    : Infinity;
+  const untilFlush = Number.isFinite(oldestPendingAt)
+    ? Math.max(0, BATCH_MAX_AGE_MS - (now - oldestPendingAt))
+    : Infinity;
+
+  // capped so a long gap between arrivals still wakes us to flush on age
+  const delay = Math.max(1, Math.min(untilArrival, untilFlush, 1000));
+
+  loopTimer = setTimeout(() => {
+    void onArrivalTick();
+  }, delay);
 }
 
 function startSimulation() {
   if (isSimulating) return;
 
   isSimulating = true;
-
-  if (currentMode === "real") {
-    initRealState();
-  }
+  nextArrivalAt = Date.now();
 
   console.log(
-    `Starting simulator: mode=${currentMode} baseIntervalMs=${BASE_INTERVAL_MS}`,
+    `Starting simulator: meanIntervalMs=${MEAN_INTERVAL_MS} batchMaxEvents=${BATCH_MAX_EVENTS} batchMaxAgeMs=${BATCH_MAX_AGE_MS}`,
   );
 
-  void sendBatch(getBatchSize(currentMode));
-  scheduleNextTick();
+  void onArrivalTick();
 }
 
 function stopSimulation() {
@@ -662,13 +683,6 @@ function stopSimulation() {
   console.log("Simulator stopped.");
 }
 
-function parseMode(input: string | undefined): SimulationMode | null {
-  if (!input) return null;
-  return VALID_MODES.includes(input as SimulationMode)
-    ? (input as SimulationMode)
-    : null;
-}
-
 // ---------------------------------------------------------------------------
 // Routes
 // ---------------------------------------------------------------------------
@@ -676,39 +690,42 @@ function parseMode(input: string | undefined): SimulationMode | null {
 app.get("/", (c) => c.text("Deko log simulator is running"));
 
 app.get("/status", (c) => {
-  const realPhaseInfo =
-    currentMode === "real" && realState
-      ? {
-          currentTier: realState.phases[realState.currentPhaseIndex].tier,
-          phaseElapsedMs: Date.now() - realState.phaseStartedAt,
-          phaseDurationMs:
-            realState.phases[realState.currentPhaseIndex].durationMs,
-          remainingPhases: realState.phases
-            .slice(realState.currentPhaseIndex + 1)
-            .map((p) => p.tier),
-        }
-      : null;
+  const oldestPendingAt = pending[0]
+    ? new Date(pending[0].timestamp).getTime()
+    : null;
 
   return c.json({
     isSimulating,
-    mode: currentMode,
     apiUrl: API_URL,
-    baseIntervalMs: BASE_INTERVAL_MS,
     hasToken: !!SERVICE_TOKEN,
+    config: {
+      meanIntervalMs: MEAN_INTERVAL_MS,
+      batchMaxEvents: BATCH_MAX_EVENTS,
+      batchMaxAgeMs: BATCH_MAX_AGE_MS,
+    },
+    // live view of where the two curves are right now
+    now: {
+      rateMultiplier: Number(rateMultiplierAt(new Date()).toFixed(2)),
+      approxEventsPerSecond: Number(
+        (rateMultiplierAt(new Date()) * 1000) / MEAN_INTERVAL_MS,
+      ).toFixed(2),
+      errorFactor: Number(errorFactorAt(new Date()).toFixed(2)),
+      expectedErrorRate: Number(
+        (MEAN_ERROR_RATE * errorFactorAt(new Date()) * 100).toFixed(1),
+      ),
+    },
+    buffered: {
+      count: pending.length,
+      oldestAgeMs:
+        oldestPendingAt === null ? null : Date.now() - oldestPendingAt,
+    },
     stats,
-    realPhaseInfo,
   });
 });
 
 app.post("/start", (c) => {
-  if (currentMode === "real" && !isSimulating) {
-    initRealState();
-  }
   startSimulation();
-  return c.json({
-    message: "Simulation started",
-    mode: currentMode,
-  });
+  return c.json({ message: "Simulation started" });
 });
 
 app.post("/stop", (c) => {
@@ -724,39 +741,10 @@ app.post("/tick", async (c) => {
     return c.json({ error: "Invalid count query parameter" }, 400);
   }
 
-  await sendBatch(count);
-  return c.json({
-    message: "Manual batch sent",
-    count,
-    mode: currentMode,
-  });
-});
+  const now = new Date();
+  await sendBatch(Array.from({ length: count }, () => generateRandomLog(now)));
 
-app.post("/mode/:mode", (c) => {
-  const mode = parseMode(c.req.param("mode"));
-
-  if (!mode) {
-    return c.json(
-      {
-        error: "Invalid mode",
-        validModes: VALID_MODES,
-      },
-      400,
-    );
-  }
-
-  const wasReal = currentMode === "real";
-  currentMode = mode;
-
-  // Re-initialise real state when switching into real mode
-  if (mode === "real" && !wasReal) {
-    initRealState();
-  }
-
-  return c.json({
-    message: "Simulation mode updated",
-    mode: currentMode,
-  });
+  return c.json({ message: "Manual batch sent", count });
 });
 
 // Start simulation immediately if token is present
