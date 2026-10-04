@@ -2,15 +2,10 @@
 
 Deko is a self-hosted API observability platform. It ingests API events, stores and aggregates them, and exposes dashboards for logs, errors, status codes, endpoints, and timeseries metrics. It is designed to be easy to run and own.
 
-## Screenshots
-
-> Screenshots will be added here.
-
-<!-- Overview dashboard -->
-<!-- Logs page -->
-<!-- Error groups -->
-<!-- Endpoints leaderboard -->
-<!-- Settings -->
+![Overview](docs/screenshots/overview.png)
+![Logs](docs/screenshots/logs.png)
+![Errors](docs/screenshots/errors.png)
+![Endpoints](docs/screenshots/endpoints.png)
 
 ## Stack
 
