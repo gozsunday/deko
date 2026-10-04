@@ -53,6 +53,7 @@ const logsSearchSchema = z.object({
   path: z.string().optional().catch(undefined),
   from: z.string().optional().catch(undefined),
   to: z.string().optional().catch(undefined),
+  preset: z.enum(["15m", "1h", "6h"]).optional().catch(undefined),
   logId: z.string().optional().catch(undefined),
   timestamp: z.string().optional().catch(undefined),
 });
@@ -295,7 +296,7 @@ function LogsPage() {
   }, [navigateWithSearch]);
 
   const handleTimeRangeChange = useCallback(
-    (next: { from?: string; to?: string }) => {
+    (next: { from?: string; to?: string; preset?: "15m" | "1h" | "6h" }) => {
       navigateWithSearch(next, true);
     },
     [navigateWithSearch],
@@ -394,6 +395,7 @@ function LogsPage() {
       <LogTimeRange
         from={searchParams.from}
         to={searchParams.to}
+        activePreset={searchParams.preset}
         onChange={handleTimeRangeChange}
       />
 

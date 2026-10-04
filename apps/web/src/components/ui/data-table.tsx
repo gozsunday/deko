@@ -3,6 +3,7 @@ import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
   FilterIcon,
+  Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { rankItem } from "@tanstack/match-sorter-utils";
@@ -482,9 +483,10 @@ export const DataTable = <TData, TValue>({
                       <HugeiconsIcon icon={FilterIcon} className="size-4" />
                       <span>{filter.label}</span>
                       {selectedValue && (
-                        <span className="border-primary-600/50 bg-primary-600/20 text-primary-600 rounded border px-1 text-xs transition-all duration-300">
-                          1
-                        </span>
+                        <HugeiconsIcon
+                          icon={Tick02Icon}
+                          className="text-primary-600 size-3.5"
+                        />
                       )}
                     </Button>
                   }

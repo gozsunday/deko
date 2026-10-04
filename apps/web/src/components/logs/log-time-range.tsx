@@ -1,3 +1,5 @@
+import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -31,17 +33,25 @@ const PRESETS = [
   { label: "6h", ms: 6 * 60 * 60_000 },
 ] as const;
 
+type Preset = (typeof PRESETS)[number]["label"];
+
 type LogTimeRangeProps = {
   from: string | undefined;
   to: string | undefined;
-  onChange: (next: { from?: string; to?: string }) => void;
+  activePreset: Preset | undefined;
+  onChange: (next: { from?: string; to?: string; preset?: Preset }) => void;
 };
 
 /**
  * Absolute time range for the log feed. When set it overrides the period
  * selector, because the API prefers an explicit range over a relative period.
  */
-export function LogTimeRange({ from, to, onChange }: LogTimeRangeProps) {
+export function LogTimeRange({
+  from,
+  to,
+  activePreset,
+  onChange,
+}: LogTimeRangeProps) {
   const [fromValue, setFromValue] = useState(toInputValue(from));
   const [toValue, setToValue] = useState(toInputValue(to));
 
@@ -51,8 +61,9 @@ export function LogTimeRange({ from, to, onChange }: LogTimeRangeProps) {
 
   const isActive = Boolean(from || to);
 
+  // typing over a range means it no longer matches any quick range
   const commit = (nextFrom: string, nextTo: string) => {
-    onChange({ from: toIso(nextFrom), to: toIso(nextTo) });
+    onChange({ from: toIso(nextFrom), to: toIso(nextTo), preset: undefined });
   };
 
   return (
@@ -105,10 +116,14 @@ export function LogTimeRange({ from, to, onChange }: LogTimeRangeProps) {
               onChange({
                 from: start.toISOString(),
                 to: end.toISOString(),
+                preset: preset.label,
               });
             }}
           >
             Last {preset.label}
+            {activePreset === preset.label && (
+              <HugeiconsIcon icon={Tick02Icon} className="size-3.5" />
+            )}
           </Button>
         ))}
 
@@ -121,7 +136,7 @@ export function LogTimeRange({ from, to, onChange }: LogTimeRangeProps) {
             onClick={() => {
               setFromValue("");
               setToValue("");
-              onChange({ from: undefined, to: undefined });
+              onChange({ from: undefined, to: undefined, preset: undefined });
             }}
           >
             Clear
