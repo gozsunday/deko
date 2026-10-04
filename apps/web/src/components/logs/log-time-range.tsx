@@ -109,6 +109,13 @@ export function LogTimeRange({
             variant="outline"
             className="h-8"
             onClick={() => {
+              if (activePreset === preset.label) {
+                setFromValue("");
+                setToValue("");
+                onChange({ from: undefined, to: undefined, preset: undefined });
+                return;
+              }
+
               const end = new Date();
               const start = new Date(end.getTime() - preset.ms);
               setFromValue(toInputValue(start.toISOString()));
