@@ -25,6 +25,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { queryKeys } from "@/lib/query-keys";
 import { $getServiceLogs, $getSlowLogs } from "@/server/dashboard";
+import { useNavigationOverlayStore } from "@/stores/navigation-overlay-store";
 import { usePeriodStore } from "@/stores/period-store";
 
 const LOGS_PAGE_SIZE = 100;
@@ -66,6 +67,9 @@ function LogsPage() {
   const { serviceId } = useParams({ from: "/_app/services/$serviceId/logs" });
   const navigate = useNavigate();
 
+  const suppressOverlay = useNavigationOverlayStore((s) => s.suppress);
+  const releaseOverlay = useNavigationOverlayStore((s) => s.release);
+
   const getServiceLogs = useServerFn($getServiceLogs);
   const getSlowLogs = useServerFn($getSlowLogs);
 
@@ -90,14 +94,15 @@ function LogsPage() {
     const trimmed = debouncedSearch.trim();
     const current = searchParamsRef.current.search ?? "";
     if (trimmed === current) return;
+    suppressOverlay();
     void navigate({
       to: "/services/$serviceId/logs",
       params: { serviceId },
       search: { ...searchParamsRef.current, search: trimmed || undefined },
       replace: true,
       resetScroll: false,
-    });
-  }, [debouncedSearch, navigate, serviceId]);
+    }).finally(releaseOverlay);
+  }, [debouncedSearch, navigate, serviceId, suppressOverlay, releaseOverlay]);
 
   const allLogsQuery = useInfiniteQuery({
     queryKey: queryKeys.logs(serviceId, {
@@ -199,21 +204,32 @@ function LogsPage() {
 
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = logsQuery;
 
+  /**
+   * Changing search params still puts the router in a transitioning state,
+   * which raises the blocking nav overlay. Nothing is navigating away, so
+   * suppress it and leave the table skeleton as the only loading signal,
+   * otherwise the overlay covers the filters the user is still clicking.
+   */
   const navigateWithSearch = useCallback(
-    (
+    async (
       newSearch: Partial<z.infer<typeof logsSearchSchema>>,
       replace = false,
       resetScroll = true,
     ) => {
-      void navigate({
-        to: "/services/$serviceId/logs",
-        params: { serviceId },
-        search: { ...searchParamsRef.current, ...newSearch },
-        replace,
-        resetScroll,
-      });
+      suppressOverlay();
+      try {
+        await navigate({
+          to: "/services/$serviceId/logs",
+          params: { serviceId },
+          search: { ...searchParamsRef.current, ...newSearch },
+          replace,
+          resetScroll,
+        });
+      } finally {
+        releaseOverlay();
+      }
     },
-    [navigate, serviceId],
+    [navigate, serviceId, suppressOverlay, releaseOverlay],
   );
 
   const handleViewChange = useCallback(
